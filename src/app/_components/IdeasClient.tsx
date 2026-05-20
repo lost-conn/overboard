@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -29,6 +30,7 @@ import {
   updateIdeaAction,
 } from "@/lib/actions/ideas";
 import { CardDrawer, type DrawerCard } from "./CardDrawer";
+import { useBoardEvents } from "./useBoardEvents";
 import styles from "./IdeasClient.module.css";
 
 export type ClientIdea = {
@@ -38,6 +40,7 @@ export type ClientIdea = {
 };
 
 export function IdeasClient({ ideas }: { ideas: ClientIdea[] }) {
+  const router = useRouter();
   const [local, setLocal] = useState<ClientIdea[]>(ideas);
   const [drawerCard, setDrawerCard] = useState<DrawerCard | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -46,6 +49,35 @@ export function IdeasClient({ ideas }: { ideas: ClientIdea[] }) {
   useEffect(() => {
     setLocal(ideas);
   }, [ideas]);
+
+  // See BoardClient for the rationale on the busy-guarded refresh.
+  const pendingRefresh = useRef(false);
+  const busy = activeId !== null || drawerCard !== null;
+
+  const handleEvent = useCallback(() => {
+    if (busy) {
+      pendingRefresh.current = true;
+    } else {
+      router.refresh();
+    }
+  }, [busy, router]);
+
+  const handleReconnect = useCallback(() => {
+    if (busy) {
+      pendingRefresh.current = true;
+    } else {
+      router.refresh();
+    }
+  }, [busy, router]);
+
+  useBoardEvents("ideas", handleEvent, handleReconnect);
+
+  useEffect(() => {
+    if (!busy && pendingRefresh.current) {
+      pendingRefresh.current = false;
+      router.refresh();
+    }
+  }, [busy, router]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),

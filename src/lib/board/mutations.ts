@@ -3,6 +3,11 @@ import { db } from "@/lib/db";
 import { Lane } from "@/generated/prisma/enums";
 import type { Card, Project } from "@/generated/prisma/client";
 import { NotFoundError, ValidationError } from "@/lib/errors";
+import { publish } from "@/lib/events/bus";
+
+function emitBoard(userId: string): void {
+  publish(userId, { type: "board", at: new Date().toISOString() });
+}
 
 function trimTitle(raw: unknown, max: number): string {
   if (typeof raw !== "string") throw new ValidationError("title must be a string");
@@ -26,9 +31,11 @@ export async function createProject(userId: string, name: string): Promise<Proje
     orderBy: { order: "desc" },
     select: { order: true },
   });
-  return db.project.create({
+  const project = await db.project.create({
     data: { userId, name: clean, order: (max?.order ?? -1) + 1 },
   });
+  emitBoard(userId);
+  return project;
 }
 
 export async function renameProject(
@@ -42,7 +49,9 @@ export async function renameProject(
     select: { id: true },
   });
   if (!project) throw new NotFoundError("project not found");
-  return db.project.update({ where: { id: project.id }, data: { name: clean } });
+  const updated = await db.project.update({ where: { id: project.id }, data: { name: clean } });
+  emitBoard(userId);
+  return updated;
 }
 
 export async function setProjectArchived(
@@ -55,7 +64,9 @@ export async function setProjectArchived(
     select: { id: true },
   });
   if (!project) throw new NotFoundError("project not found");
-  return db.project.update({ where: { id: project.id }, data: { archived } });
+  const updated = await db.project.update({ where: { id: project.id }, data: { archived } });
+  emitBoard(userId);
+  return updated;
 }
 
 export async function deleteProject(userId: string, projectId: string): Promise<void> {
@@ -65,6 +76,7 @@ export async function deleteProject(userId: string, projectId: string): Promise<
   });
   if (!project) throw new NotFoundError("project not found");
   await db.project.delete({ where: { id: project.id } });
+  emitBoard(userId);
 }
 
 export async function reorderProjects(
@@ -85,6 +97,7 @@ export async function reorderProjects(
   await db.$transaction(
     valid.map((id, i) => db.project.update({ where: { id }, data: { order: i } })),
   );
+  emitBoard(userId);
 }
 
 export async function createCard(
@@ -111,7 +124,7 @@ export async function createCard(
     select: { order: true },
   });
 
-  return db.card.create({
+  const card = await db.card.create({
     data: {
       projectId: project.id,
       lane,
@@ -121,6 +134,8 @@ export async function createCard(
       ...(args.contentMd !== undefined ? { contentMd: args.contentMd } : {}),
     },
   });
+  emitBoard(userId);
+  return card;
 }
 
 // undefined = leave field unchanged; null = clear it.
@@ -140,7 +155,7 @@ export async function updateCard(
   });
   if (!card) throw new NotFoundError("card not found");
 
-  return db.card.update({
+  const updated = await db.card.update({
     where: { id: card.id },
     data: {
       title,
@@ -148,6 +163,8 @@ export async function updateCard(
       ...(args.contentMd !== undefined ? { contentMd: args.contentMd } : {}),
     },
   });
+  emitBoard(userId);
+  return updated;
 }
 
 export async function deleteCard(userId: string, cardId: string): Promise<void> {
@@ -157,6 +174,7 @@ export async function deleteCard(userId: string, cardId: string): Promise<void> 
   });
   if (!card) throw new NotFoundError("card not found");
   await db.card.delete({ where: { id: card.id } });
+  emitBoard(userId);
 }
 
 export async function moveCard(
@@ -223,4 +241,5 @@ export async function moveCard(
       }
     }
   });
+  emitBoard(userId);
 }

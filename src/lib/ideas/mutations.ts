@@ -3,6 +3,15 @@ import { db } from "@/lib/db";
 import { Lane } from "@/generated/prisma/enums";
 import type { Idea } from "@/generated/prisma/client";
 import { NotFoundError, ValidationError } from "@/lib/errors";
+import { publish } from "@/lib/events/bus";
+
+function emitIdeas(userId: string): void {
+  publish(userId, { type: "ideas", at: new Date().toISOString() });
+}
+
+function emitBoard(userId: string): void {
+  publish(userId, { type: "board", at: new Date().toISOString() });
+}
 
 function trimTitle(raw: unknown, max: number): string {
   if (typeof raw !== "string") throw new ValidationError("title must be a string");
@@ -23,7 +32,7 @@ export async function createIdea(
     orderBy: { order: "desc" },
     select: { order: true },
   });
-  return db.idea.create({
+  const idea = await db.idea.create({
     data: {
       userId,
       title: clean,
@@ -32,6 +41,8 @@ export async function createIdea(
       ...(body.contentMd !== undefined ? { contentMd: body.contentMd } : {}),
     },
   });
+  emitIdeas(userId);
+  return idea;
 }
 
 // undefined = leave field unchanged; null = clear it.
@@ -50,7 +61,7 @@ export async function updateIdea(
     select: { id: true },
   });
   if (!idea) throw new NotFoundError("idea not found");
-  return db.idea.update({
+  const updated = await db.idea.update({
     where: { id: idea.id },
     data: {
       title,
@@ -58,6 +69,8 @@ export async function updateIdea(
       ...(args.contentMd !== undefined ? { contentMd: args.contentMd } : {}),
     },
   });
+  emitIdeas(userId);
+  return updated;
 }
 
 export async function deleteIdea(userId: string, ideaId: string): Promise<void> {
@@ -67,6 +80,7 @@ export async function deleteIdea(userId: string, ideaId: string): Promise<void> 
   });
   if (!idea) throw new NotFoundError("idea not found");
   await db.idea.delete({ where: { id: idea.id } });
+  emitIdeas(userId);
 }
 
 export async function reorderIdeas(userId: string, orderedIds: string[]): Promise<void> {
@@ -80,6 +94,7 @@ export async function reorderIdeas(userId: string, orderedIds: string[]): Promis
   await db.$transaction(
     valid.map((id, i) => db.idea.update({ where: { id }, data: { order: i } })),
   );
+  emitIdeas(userId);
 }
 
 // Idea title becomes project name. If the idea has notes, they go on a single BACKLOG card.
@@ -97,7 +112,7 @@ export async function promoteIdea(userId: string, ideaId: string): Promise<{ pro
     select: { order: true },
   });
 
-  return db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx) => {
     const project = await tx.project.create({
       data: {
         userId,
@@ -121,4 +136,7 @@ export async function promoteIdea(userId: string, ideaId: string): Promise<{ pro
     await tx.idea.delete({ where: { id: idea.id } });
     return { projectId: project.id };
   });
+  emitIdeas(userId);
+  emitBoard(userId);
+  return result;
 }

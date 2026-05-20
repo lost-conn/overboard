@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -38,6 +39,7 @@ import {
   updateCardAction,
 } from "@/lib/actions/board";
 import { CardDrawer, type DrawerCard } from "./CardDrawer";
+import { useBoardEvents } from "./useBoardEvents";
 import styles from "./BoardClient.module.css";
 
 const LANES = ["BACKLOG", "TODO", "DOING", "DONE"] as const;
@@ -77,6 +79,7 @@ function laneDroppableId(projectId: string, lane: LaneKey): string {
 }
 
 export function BoardClient({ projects }: Props) {
+  const router = useRouter();
   const [localProjects, setLocalProjects] = useState<ClientProject[]>(projects);
   const [drawerCard, setDrawerCard] = useState<DrawerCard | null>(null);
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null);
@@ -87,6 +90,46 @@ export function BoardClient({ projects }: Props) {
   useEffect(() => {
     setLocalProjects(projects);
   }, [projects]);
+
+  // Real-time updates: an in-process bus emits "board" events on every mutation,
+  // routed to this user's open EventSources. Refresh re-runs getBoardForUser on
+  // the server, then props update and the useEffect above syncs them into local
+  // state.
+  //
+  // Two known hazards: dnd-kit's drag tracking dies if the localProjects array
+  // is replaced mid-drag, and CardDrawer overwrites unsaved edits when its `card`
+  // prop changes. We defer the refresh while either is true and replay it once
+  // the user finishes.
+  const pendingRefresh = useRef(false);
+  const busy = activeDrag !== null || drawerCard !== null;
+
+  const handleEvent = useCallback(() => {
+    if (busy) {
+      pendingRefresh.current = true;
+    } else {
+      router.refresh();
+    }
+  }, [busy, router]);
+
+  const handleReconnect = useCallback(() => {
+    // After (re)connect, fetch fresh state in case mutations landed while we were
+    // disconnected. Same busy guard.
+    if (busy) {
+      pendingRefresh.current = true;
+    } else {
+      router.refresh();
+    }
+  }, [busy, router]);
+
+  useBoardEvents("board", handleEvent, handleReconnect);
+
+  // Drain a deferred refresh once the user is no longer busy.
+  useEffect(() => {
+    if (!busy && pendingRefresh.current) {
+      pendingRefresh.current = false;
+      router.refresh();
+    }
+  }, [busy, router]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
