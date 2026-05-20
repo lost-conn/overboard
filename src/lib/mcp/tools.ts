@@ -7,7 +7,7 @@ import * as boardQ from "@/lib/board/queries";
 import * as boardM from "@/lib/board/mutations";
 import * as ideasQ from "@/lib/ideas/queries";
 import * as ideasM from "@/lib/ideas/mutations";
-import { textToTipTapJson, tipTapJsonToText } from "./content";
+import { markdownToTipTapJson, tipTapJsonToMarkdown } from "./content";
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -251,7 +251,7 @@ const getCard: Tool = {
       lane: card.lane,
       order: card.order,
       title: card.title,
-      body: card.contentMd ?? tipTapJsonToText(card.contentJson),
+      body: tipTapJsonToMarkdown(card.contentJson),
       createdAt: card.createdAt,
       updatedAt: card.updatedAt,
     };
@@ -260,14 +260,14 @@ const getCard: Tool = {
 
 const createCard: Tool = {
   name: "create_card",
-  description: "Create a card in a project lane. Optional body is stored as plain text and synced to the rich-text editor.",
+  description: "Create a card in a project lane. Optional body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link).",
   inputSchema: {
     type: "object",
     properties: {
       projectId: { type: "string" },
       lane: { type: "string", enum: LANE_VALUES },
       title: { type: "string", maxLength: 200 },
-      body: { type: "string", description: "Optional plain-text body. Newlines preserved." },
+      body: { type: "string", description: "Optional markdown body." },
     },
     required: ["projectId", "lane", "title"],
     additionalProperties: false,
@@ -279,15 +279,14 @@ const createCard: Tool = {
       projectId: requireString(rec, "projectId"),
       lane: requireLane(rec, "lane"),
       title: requireString(rec, "title", 200),
-      contentMd: body ?? null,
-      contentJson: body ? textToTipTapJson(body) : null,
+      contentJson: body ? markdownToTipTapJson(body) : null,
     });
   },
 };
 
 const updateCard: Tool = {
   name: "update_card",
-  description: "Update a card's title and/or body. Omit a field to leave it unchanged. Pass body=\"\" to clear it.",
+  description: "Update a card's title and/or body. Omit body to leave it unchanged. Pass body=\"\" to clear. Body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link).",
   inputSchema: {
     type: "object",
     properties: {
@@ -307,8 +306,8 @@ const updateCard: Tool = {
       ...(body === undefined
         ? {}
         : body === ""
-          ? { contentMd: null, contentJson: null }
-          : { contentMd: body, contentJson: textToTipTapJson(body) }),
+          ? { contentJson: null }
+          : { contentJson: markdownToTipTapJson(body) }),
     });
   },
 };
@@ -376,8 +375,7 @@ const createIdea: Tool = {
     const rec = asRecord(args);
     const body = optionalString(rec, "body");
     return ideasM.createIdea(ctx.userId, requireString(rec, "title", 200), {
-      contentMd: body ?? null,
-      contentJson: body ? textToTipTapJson(body) : null,
+      contentJson: body ? markdownToTipTapJson(body) : null,
     });
   },
 };
@@ -404,8 +402,8 @@ const updateIdea: Tool = {
       ...(body === undefined
         ? {}
         : body === ""
-          ? { contentMd: null, contentJson: null }
-          : { contentMd: body, contentJson: textToTipTapJson(body) }),
+          ? { contentJson: null }
+          : { contentJson: markdownToTipTapJson(body) }),
     });
   },
 };
