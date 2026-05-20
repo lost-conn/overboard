@@ -17,7 +17,7 @@ import {
   ListOrdered,
   Quote,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import styles from "./Editor.module.css";
 
 type EditorJSON = Record<string, unknown>;
@@ -25,9 +25,15 @@ type EditorJSON = Record<string, unknown>;
 type Props = {
   initialContent: EditorJSON | null;
   onChange: (json: EditorJSON) => void;
+  onSubmit?: () => void;
 };
 
-export function CardEditor({ initialContent, onChange }: Props) {
+export function CardEditor({ initialContent, onChange, onSubmit }: Props) {
+  const onSubmitRef = useRef(onSubmit);
+  useEffect(() => {
+    onSubmitRef.current = onSubmit;
+  }, [onSubmit]);
+
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
@@ -44,6 +50,13 @@ export function CardEditor({ initialContent, onChange }: Props) {
     editorProps: {
       attributes: {
         class: styles.editor,
+      },
+      handleKeyDown: (_view, event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+          onSubmitRef.current?.();
+          return true;
+        }
+        return false;
       },
     },
     onUpdate: ({ editor }) => {

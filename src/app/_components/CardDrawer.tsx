@@ -99,6 +99,12 @@ export function CardDrawer({ card, onClose, onSave, onDelete }: Props) {
               setTitle(e.target.value);
               setDirty(true);
             }}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                handleSave();
+              }
+            }}
             placeholder="Card title"
             maxLength={200}
             autoFocus
@@ -111,6 +117,7 @@ export function CardDrawer({ card, onClose, onSave, onDelete }: Props) {
                 setContentJson(json);
                 setDirty(true);
               }}
+              onSubmit={handleSave}
             />
           </div>
 
