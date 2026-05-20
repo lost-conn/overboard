@@ -6,6 +6,17 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Editor } from "@tiptap/react";
+import {
+  Bold,
+  Braces,
+  Code,
+  Heading2,
+  Italic,
+  List,
+  ListChecks,
+  ListOrdered,
+  Quote,
+} from "lucide-react";
 import { useEffect } from "react";
 import styles from "./Editor.module.css";
 
@@ -64,21 +75,21 @@ function Toolbar({ editor }: { editor: Editor | null }) {
         onClick={() => editor.chain().focus().toggleBold().run()}
         label="Bold"
       >
-        <strong>B</strong>
+        <Bold size={14} aria-hidden />
       </ToolButton>
       <ToolButton
         active={editor.isActive("italic")}
         onClick={() => editor.chain().focus().toggleItalic().run()}
         label="Italic"
       >
-        <em>I</em>
+        <Italic size={14} aria-hidden />
       </ToolButton>
       <ToolButton
         active={editor.isActive("code")}
         onClick={() => editor.chain().focus().toggleCode().run()}
         label="Inline code"
       >
-        <code>{"</>"}</code>
+        <Code size={14} aria-hidden />
       </ToolButton>
       <span className={styles.divider} />
       <ToolButton
@@ -86,28 +97,28 @@ function Toolbar({ editor }: { editor: Editor | null }) {
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
         label="Heading"
       >
-        H
+        <Heading2 size={14} aria-hidden />
       </ToolButton>
       <ToolButton
         active={editor.isActive("bulletList")}
         onClick={() => editor.chain().focus().toggleBulletList().run()}
         label="Bullet list"
       >
-        • —
+        <List size={14} aria-hidden />
       </ToolButton>
       <ToolButton
         active={editor.isActive("orderedList")}
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
         label="Numbered list"
       >
-        1.
+        <ListOrdered size={14} aria-hidden />
       </ToolButton>
       <ToolButton
         active={editor.isActive("taskList")}
         onClick={() => editor.chain().focus().toggleTaskList().run()}
         label="Task list"
       >
-        ☐
+        <ListChecks size={14} aria-hidden />
       </ToolButton>
       <span className={styles.divider} />
       <ToolButton
@@ -115,14 +126,14 @@ function Toolbar({ editor }: { editor: Editor | null }) {
         onClick={() => editor.chain().focus().toggleBlockquote().run()}
         label="Quote"
       >
-        &ldquo;&rdquo;
+        <Quote size={14} aria-hidden />
       </ToolButton>
       <ToolButton
         active={editor.isActive("codeBlock")}
         onClick={() => editor.chain().focus().toggleCodeBlock().run()}
         label="Code block"
       >
-        {"{ }"}
+        <Braces size={14} aria-hidden />
       </ToolButton>
     </div>
   );

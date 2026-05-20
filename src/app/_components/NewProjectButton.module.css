@@ -1,4 +1,7 @@
 .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 6px 11px;
   font-size: 12px;
   font-weight: 500;

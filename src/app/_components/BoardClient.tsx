@@ -22,6 +22,14 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  ChevronRight,
+  GripVertical,
+  Plus,
+  Rows3,
+  Rows4,
+  X,
+} from "lucide-react";
+import {
   createCardAction,
   deleteCardAction,
   deleteProjectAction,
@@ -347,7 +355,7 @@ function ProjectRow({
           {...sortable.attributes}
           {...sortable.listeners}
         >
-          ⠿
+          <GripVertical size={14} aria-hidden />
         </button>
         <div className={styles.projectInfo}>
           <span className={styles.projectName}>{project.name}</span>
@@ -362,7 +370,7 @@ function ProjectRow({
           aria-label={`Delete project ${project.name}`}
           title="Delete project"
         >
-          ×
+          <X size={14} aria-hidden />
         </button>
       </div>
       {LANES.map((lane) => (
@@ -396,7 +404,7 @@ function ViewStateToggle({
         aria-pressed={value === "collapsed"}
         title="Collapse row"
       >
-        ▸
+        <ChevronRight size={12} aria-hidden />
       </button>
       <button
         type="button"
@@ -405,7 +413,7 @@ function ViewStateToggle({
         aria-pressed={value === "minimized"}
         title="Minimize row (default)"
       >
-        ▤
+        <Rows3 size={12} aria-hidden />
       </button>
       <button
         type="button"
@@ -414,7 +422,7 @@ function ViewStateToggle({
         aria-pressed={value === "expanded"}
         title="Expand row"
       >
-        ▦
+        <Rows4 size={12} aria-hidden />
       </button>
     </div>
   );
@@ -535,7 +543,7 @@ function LaneCell({
               onClick={() => setAdding(true)}
               disabled={isPending}
             >
-              + Add card
+              <Plus size={12} aria-hidden /> Add card
             </button>
           )}
         </div>

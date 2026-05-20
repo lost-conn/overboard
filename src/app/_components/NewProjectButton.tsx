@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { Plus } from "lucide-react";
 import { createProjectAction } from "@/lib/actions/board";
 import styles from "./NewProjectButton.module.css";
 
@@ -43,7 +44,7 @@ export function NewProjectButton() {
           setTimeout(() => inputRef.current?.focus(), 0);
         }}
       >
-        + New project
+        <Plus size={14} aria-hidden /> New project
       </button>
     );
   }

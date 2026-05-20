@@ -26,6 +26,9 @@
 }
 
 .newBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 7px 12px;
   font-size: 13px;
   font-weight: 500;
@@ -109,7 +112,9 @@
 .itemHandle {
   flex-shrink: 0;
   width: 22px;
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-dim);
   background: transparent;
   border: 0;
@@ -174,6 +179,9 @@
 }
 
 .promoteBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 5px 10px;
   font-size: 12px;
   font-weight: 500;
@@ -193,8 +201,9 @@
 .deleteBtn {
   width: 24px;
   height: 24px;
-  font-size: 16px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;

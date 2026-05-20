@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { getIdeasForUser } from "@/lib/ideas";
@@ -22,7 +23,7 @@ export default async function IdeasPage() {
       <header className={styles.header}>
         <div className={styles.headerLeft}>
           <Link href="/" className={styles.backLink}>
-            ← Board
+            <ArrowLeft size={14} aria-hidden /> Board
           </Link>
           <h1 className={styles.title}>Idea pool</h1>
           <span className={styles.email}>{user.email}</span>

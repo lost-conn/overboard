@@ -80,39 +80,19 @@
 .closeBtn {
   width: 28px;
   height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 6px;
-  position: relative;
-}
-
-.closeBtn::before,
-.closeBtn::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 12px;
-  height: 1.5px;
-  background: var(--text-dim);
-  transform-origin: center;
-}
-
-.closeBtn::before {
-  transform: translate(-50%, -50%) rotate(45deg);
-}
-
-.closeBtn::after {
-  transform: translate(-50%, -50%) rotate(-45deg);
+  transition: color 0.15s, border-color 0.15s;
 }
 
 .closeBtn:hover {
+  color: var(--text);
   border-color: var(--text-dim);
-}
-
-.closeBtn:hover::before,
-.closeBtn:hover::after {
-  background: var(--text);
 }
 
 .titleInput {

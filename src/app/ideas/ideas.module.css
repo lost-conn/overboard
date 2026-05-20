@@ -20,6 +20,9 @@
 }
 
 .backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 13px;
   color: var(--text-dim);
 }

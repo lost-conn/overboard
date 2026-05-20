@@ -1,6 +1,7 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
+import { X } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { CardEditor } from "./Editor";
 import styles from "./CardDrawer.module.css";
@@ -86,7 +87,9 @@ export function CardDrawer({ card, onClose, onSave, onDelete }: Props) {
                 </span>
               ))}
             </Dialog.Title>
-            <Dialog.Close className={styles.closeBtn} aria-label="Close" />
+            <Dialog.Close className={styles.closeBtn} aria-label="Close">
+              <X size={16} aria-hidden />
+            </Dialog.Close>
           </div>
 
           <input

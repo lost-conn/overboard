@@ -20,6 +20,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { ArrowRight, GripVertical, Plus, X } from "lucide-react";
 import {
   createIdeaAction,
   deleteIdeaAction,
@@ -177,7 +178,7 @@ function NewIdeaButton({ open, setOpen }: { open: boolean; setOpen: (v: boolean)
           setTimeout(() => inputRef.current?.focus(), 0);
         }}
       >
-        + New idea
+        <Plus size={14} aria-hidden /> New idea
       </button>
     );
   }
@@ -245,7 +246,7 @@ function SortableIdea({ idea, onClick }: { idea: ClientIdea; onClick: () => void
         {...sortable.attributes}
         {...sortable.listeners}
       >
-        ⠿
+        <GripVertical size={14} aria-hidden />
       </button>
       <button type="button" className={styles.itemMain} onClick={onClick} disabled={isPending}>
         <span className={styles.itemTitle}>{idea.title}</span>
@@ -259,7 +260,7 @@ function SortableIdea({ idea, onClick }: { idea: ClientIdea; onClick: () => void
           disabled={isPending}
           title="Promote to project"
         >
-          Promote →
+          Promote <ArrowRight size={12} aria-hidden />
         </button>
         <button
           type="button"
@@ -269,7 +270,7 @@ function SortableIdea({ idea, onClick }: { idea: ClientIdea; onClick: () => void
           aria-label="Delete idea"
           title="Delete idea"
         >
-          ×
+          <X size={14} aria-hidden />
         </button>
       </div>
     </li>
