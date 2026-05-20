@@ -6,9 +6,8 @@
 
 .board {
   display: grid;
-  grid-template-columns: 200px repeat(4, minmax(240px, 1fr));
+  grid-template-columns: 180px repeat(4, minmax(160px, 1fr));
   gap: 8px;
-  min-width: max-content;
 }
 
 .cornerCell {
@@ -177,7 +176,7 @@
 .cardTitle {
   flex: 1;
   min-width: 0;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .cardDot {
