@@ -1,0 +1,172 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 280px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.toolBtn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toolBtn:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.toolBtnActive {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.toolBtn code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--border);
+}
+
+/* The .editor class is applied to the ProseMirror contentEditable element itself */
+.editor {
+  flex: 1;
+  min-height: 240px;
+  padding: 14px 16px;
+  font-size: 14px;
+  line-height: 1.55;
+  outline: none;
+  overflow: auto;
+}
+
+.editor > * + * {
+  margin-top: 0.6em;
+}
+
+.editor :global(h1),
+.editor :global(h2),
+.editor :global(h3) {
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+.editor :global(h2) {
+  font-size: 18px;
+}
+
+.editor :global(h3) {
+  font-size: 15px;
+}
+
+.editor :global(ul),
+.editor :global(ol) {
+  padding-left: 1.4em;
+}
+
+.editor :global(blockquote) {
+  margin-left: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--border);
+  color: var(--text-dim);
+}
+
+.editor :global(code) {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  padding: 1px 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.editor :global(pre) {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+.editor :global(pre code) {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.editor :global(a) {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* Task list */
+.editor :global(ul[data-type="taskList"]) {
+  list-style: none;
+  padding-left: 0;
+}
+
+.editor :global(ul[data-type="taskList"] li) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.editor :global(ul[data-type="taskList"] li > label) {
+  flex-shrink: 0;
+  user-select: none;
+  margin-top: 4px;
+}
+
+.editor :global(ul[data-type="taskList"] li > div) {
+  flex: 1;
+}
+
+.editor :global(ul[data-type="taskList"] input[type="checkbox"]) {
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
+.editor :global(ul[data-type="taskList"] li[data-checked="true"] > div) {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+
+/* Placeholder text — Placeholder extension adds .is-editor-empty + data-placeholder on empty nodes */
+.editor :global(p.is-editor-empty:first-child::before) {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-dim);
+  pointer-events: none;
+  height: 0;
+}

@@ -1,0 +1,27 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: overboard-organizer:latest
+    container_name: overboard-organizer
+    restart: unless-stopped
+
+    # Bound to localhost so only the host's Caddy can reach it.
+    # Port 10946 was chosen to avoid collisions with other locally-hosted
+    # projects on this machine. Caddy snippet (on the host):
+    #
+    #   overboard.example.com {
+    #       reverse_proxy 127.0.0.1:10946
+    #   }
+    ports:
+      - "127.0.0.1:10946:3000"
+
+    # SQLite lives on the host so the DB survives image rebuilds.
+    # Created on first `docker compose up`; back up by copying ./data/app.db.
+    volumes:
+      - ./data:/app/data
+
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: file:/app/data/app.db

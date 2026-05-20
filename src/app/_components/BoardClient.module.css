@@ -1,0 +1,258 @@
+.boardScroll {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 24px 24px;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: 200px repeat(4, minmax(240px, 1fr));
+  gap: 8px;
+  min-width: max-content;
+}
+
+.cornerCell {
+  /* spacer above project name column */
+}
+
+.laneHeader {
+  position: sticky;
+  top: 0;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.projectCell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 10px 10px 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-height: 80px;
+}
+
+.dragHandle {
+  flex-shrink: 0;
+  width: 18px;
+  height: 28px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: grab;
+  opacity: 0.35;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.projectCell:hover .dragHandle {
+  opacity: 1;
+}
+
+.dragHandle:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.card {
+  touch-action: manipulation;
+}
+
+.projectInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.projectName {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projectCount {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.projectDelete {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.projectCell:hover .projectDelete {
+  opacity: 1;
+}
+
+.projectDelete:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.laneCell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--surface) 50%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-height: 80px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.laneCellOver {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.laneEmpty {
+  flex: 1;
+  min-height: 24px;
+  border: 1px dashed color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 4px;
+}
+
+.card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text);
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    transform 0.05s;
+}
+
+.card:hover {
+  border-color: var(--text-dim);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.card:active {
+  transform: translateY(1px);
+}
+
+.cardTitle {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.cardDot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin-top: 5px;
+  background: var(--accent);
+  border-radius: 50%;
+  opacity: 0.7;
+}
+
+.addBtn {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px dashed transparent;
+  border-radius: 4px;
+  text-align: left;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.addBtn:hover {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--bg);
+}
+
+.addForm {
+  display: block;
+}
+
+.addInput {
+  width: 100%;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  outline: none;
+}
+
+.cardGhost {
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  cursor: grabbing;
+  max-width: 280px;
+}
+
+.projectGhost {
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  cursor: grabbing;
+}
+
+@media (max-width: 640px) {
+  .board {
+    grid-template-columns: 140px repeat(4, minmax(180px, 1fr));
+  }
+}

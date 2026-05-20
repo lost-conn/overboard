@@ -1,66 +1,85 @@
-import Image from "next/image";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { currentUser } from "@/lib/auth";
+import { getBoardForUser, type ProjectRow } from "@/lib/board";
+import { Lane } from "@/generated/prisma/enums";
+import { logoutAction } from "./(auth)/actions";
+import { BoardClient, type ClientProject } from "./_components/BoardClient";
+import { NewProjectButton } from "./_components/NewProjectButton";
 import styles from "./page.module.css";
 
-export default function Home() {
+export default async function Home() {
+  const user = await currentUser();
+  if (!user) redirect("/login");
+
+  const projects = await getBoardForUser(user.id);
+  const clientProjects = projects.map(toClientProject);
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className={styles.page}>
+      <header className={styles.header}>
+        <div className={styles.headerLeft}>
+          <h1 className={styles.title}>Overboard Organizer</h1>
+          <span className={styles.email}>{user.email}</span>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className={styles.headerActions}>
+          <NewProjectButton />
+          <Link className={styles.navLink} href="/ideas">
+            Idea pool
+          </Link>
+          <form action={logoutAction}>
+            <button className={styles.iconBtn} type="submit">
+              Sign out
+            </button>
+          </form>
         </div>
-      </main>
-    </div>
+      </header>
+
+      {clientProjects.length === 0 ? <EmptyState /> : <BoardClient projects={clientProjects} />}
+    </main>
+  );
+}
+
+function toClientProject(p: ProjectRow): ClientProject {
+  const lanes: ClientProject["lanes"] = {
+    BACKLOG: [],
+    TODO: [],
+    DOING: [],
+    DONE: [],
+  };
+  for (const lane of [Lane.BACKLOG, Lane.TODO, Lane.DOING, Lane.DONE] as const) {
+    lanes[lane] = p.lanes[lane].map((c) => ({
+      id: c.id,
+      lane: c.lane,
+      title: c.title,
+      contentJson: parseContent(c.contentJson),
+    }));
+  }
+  return { id: p.id, name: p.name, lanes };
+}
+
+function parseContent(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function EmptyState() {
+  return (
+    <section className={styles.empty}>
+      <h2 className={styles.emptyTitle}>No projects yet.</h2>
+      <p className={styles.emptyBody}>
+        Each project becomes a row across the board. Lanes (Backlog → To do → Doing → Done) run
+        left to right.
+      </p>
+      <p className={styles.emptyHint}>
+        Click <strong>+ New project</strong> in the header to start one, capture rough ideas in
+        the <Link href="/ideas">Idea pool</Link>, or seed sample data with{" "}
+        <code>npm run seed -- {`<your email>`}</code>.
+      </p>
+    </section>
   );
 }

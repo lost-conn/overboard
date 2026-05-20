@@ -1,0 +1,33 @@
+.btn {
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.btn:hover {
+  border-color: var(--text-dim);
+  background: var(--bg);
+}
+
+.form {
+  display: block;
+}
+
+.input {
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  outline: none;
+  min-width: 220px;
+}

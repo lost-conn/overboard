@@ -33,9 +33,19 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# sqlite + prisma artifacts
+/data/*.db
+/data/*.db-journal
+/data/*.db-wal
+/data/*.db-shm
+
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated
+/.playwright-mcp/
+/board-*.png

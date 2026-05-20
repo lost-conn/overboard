@@ -16,7 +16,16 @@
 .headerLeft {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: 16px;
+}
+
+.backLink {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.backLink:hover {
+  color: var(--accent);
 }
 
 .title {
@@ -34,18 +43,6 @@
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.navLink {
-  font-size: 13px;
-  color: var(--text-dim);
-  padding: 6px 0;
-  transition: color 0.15s;
-}
-
-.navLink:hover {
-  color: var(--accent);
-  text-decoration: none;
 }
 
 .iconBtn {
@@ -66,44 +63,4 @@
   color: var(--text);
   border-color: var(--text-dim);
   background: var(--bg);
-}
-
-/* Empty state */
-
-.empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 48px 24px;
-  gap: 12px;
-  max-width: 520px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-.emptyTitle {
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.emptyBody {
-  font-size: 14px;
-  color: var(--text-dim);
-}
-
-.emptyHint {
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--text-dim);
-}
-
-.emptyHint code {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 12px;
-  padding: 2px 6px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
 }
