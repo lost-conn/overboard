@@ -40,28 +40,30 @@ ENV DATABASE_URL=file:/app/data/app.db
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssl ca-certificates \
- && rm -rf /var/lib/apt/lists/* \
- && groupadd --system --gid 1001 app \
- && useradd  --system --uid 1001 --gid app --home /app app
+ && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder --chown=app:app /app/package.json ./package.json
-COPY --from=builder --chown=app:app /app/package-lock.json ./package-lock.json
-COPY --from=builder --chown=app:app /app/next.config.ts ./next.config.ts
-COPY --from=builder --chown=app:app /app/tsconfig.json ./tsconfig.json
-COPY --from=builder --chown=app:app /app/node_modules ./node_modules
-COPY --from=builder --chown=app:app /app/.next ./.next
-COPY --from=builder --chown=app:app /app/public ./public
-COPY --from=builder --chown=app:app /app/src/generated ./src/generated
-COPY --from=builder --chown=app:app /app/prisma ./prisma
-COPY --from=builder --chown=app:app /app/prisma.config.ts ./prisma.config.ts
+# Use the `node` user that already ships with the official image (uid/gid 1000).
+# This matches typical single-user Linux hosts (the first regular user is 1000),
+# so the SQLite file created in the bind-mounted ./data dir has consistent
+# ownership across the container and the host.
+COPY --from=builder --chown=node:node /app/package.json ./package.json
+COPY --from=builder --chown=node:node /app/package-lock.json ./package-lock.json
+COPY --from=builder --chown=node:node /app/next.config.ts ./next.config.ts
+COPY --from=builder --chown=node:node /app/tsconfig.json ./tsconfig.json
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/.next ./.next
+COPY --from=builder --chown=node:node /app/public ./public
+COPY --from=builder --chown=node:node /app/src/generated ./src/generated
+COPY --from=builder --chown=node:node /app/prisma ./prisma
+COPY --from=builder --chown=node:node /app/prisma.config.ts ./prisma.config.ts
 
 # SQLite data dir — mounted as a volume by docker-compose so the DB survives
-# container rebuilds.
-RUN mkdir -p /app/data && chown app:app /app/data
+# container rebuilds. Ownership is overlaid by the host bind mount at runtime.
+RUN mkdir -p /app/data && chown node:node /app/data
 
-COPY --chown=app:app docker-entrypoint.sh ./
+COPY --chown=node:node docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
-USER app
+USER node
 EXPOSE 3000
 CMD ["./docker-entrypoint.sh"]
