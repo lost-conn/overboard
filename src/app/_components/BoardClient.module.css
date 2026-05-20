@@ -6,7 +6,9 @@
 
 .board {
   display: grid;
-  grid-template-columns: 180px repeat(4, minmax(160px, 1fr));
+  /* grid-template-columns is set inline by BoardClient so lane collapses
+     can change column widths at runtime. */
+  grid-template-columns: 220px repeat(4, minmax(160px, 1fr));
   gap: 8px;
 }
 
@@ -18,30 +20,52 @@
   position: sticky;
   top: 0;
   padding: 8px 12px;
+  font: inherit;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-dim);
   background: var(--bg);
+  border: 0;
   border-bottom: 1px solid var(--border);
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  z-index: 1;
+}
+
+.laneHeader:hover {
+  color: var(--text);
+}
+
+.laneHeaderCollapsed {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  padding: 10px 4px;
+  letter-spacing: 0.08em;
 }
 
 .projectCell {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 10px 10px 6px;
+  gap: 4px;
+  padding: 10px 8px 10px 4px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   min-height: 80px;
 }
 
+.projectCellCollapsed {
+  min-height: 0;
+  padding: 4px 8px 4px 4px;
+}
+
 .dragHandle {
   flex-shrink: 0;
-  width: 18px;
-  height: 28px;
+  width: 16px;
+  height: 24px;
   font-size: 14px;
   line-height: 1;
   color: var(--text-dim);
@@ -70,14 +94,10 @@
   color: var(--text);
 }
 
-.card {
-  touch-action: manipulation;
-}
-
 .projectInfo {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   flex: 1;
   min-width: 0;
 }
@@ -96,10 +116,51 @@
   color: var(--text-dim);
 }
 
+.toggleGroup {
+  display: inline-flex;
+  gap: 1px;
+  padding: 1px;
+  background: var(--border);
+  border-radius: 4px;
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
+.projectCell:hover .toggleGroup {
+  opacity: 1;
+}
+
+.toggleBtn {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.toggleBtn:hover:not(.toggleBtnActive) {
+  color: var(--text);
+  background: var(--bg);
+}
+
+.toggleBtnActive {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+
 .projectDelete {
   flex-shrink: 0;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   font-size: 16px;
   line-height: 1;
   color: var(--text-dim);
@@ -120,10 +181,7 @@
 }
 
 .laneCell {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px;
+  position: relative;
   background: color-mix(in srgb, var(--surface) 50%, transparent);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -131,9 +189,52 @@
   transition: background 0.15s, border-color 0.15s;
 }
 
+.laneInner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  height: 100%;
+}
+
 .laneCellOver {
   background: color-mix(in srgb, var(--accent) 8%, var(--surface));
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+/* Minimized rows: lanes cap at roughly three cards' worth of height, with
+   internal scroll for the rest. */
+.laneCellMinimized:not(.laneCellDone) .laneInner {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Done lane: contents are positioned absolutely so they don't size the grid
+   row. The row's height is driven by Backlog/Todo/Doing, and Done scrolls
+   internally up to that height. */
+.laneCellDone .laneInner {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+}
+
+.laneCellDone.laneCellMinimized {
+  /* Cell height still bounded by sibling lanes' max-height (200px) because the
+     grid row is shaped by them. No extra constraint needed here. */
+}
+
+/* Project row collapsed: lane cells shrink to a transparent strip and hide
+   their contents — only the project name strip remains. */
+.laneCellRowCollapsed {
+  min-height: 0;
+  background: transparent;
+  border-color: transparent;
+}
+
+/* Lane column collapsed via header click: hide cards across all rows, keep a
+   thin strip so the column is still visually present. */
+.laneCellColCollapsed {
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
 }
 
 .laneEmpty {
@@ -158,6 +259,7 @@
   border-radius: 5px;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03);
   cursor: pointer;
+  touch-action: manipulation;
   transition:
     border-color 0.15s,
     box-shadow 0.15s,
@@ -248,10 +350,4 @@
   border-radius: var(--radius);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
   cursor: grabbing;
-}
-
-@media (max-width: 640px) {
-  .board {
-    grid-template-columns: 140px repeat(4, minmax(180px, 1fr));
-  }
 }

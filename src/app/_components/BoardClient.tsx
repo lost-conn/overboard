@@ -42,6 +42,8 @@ const LANE_LABELS: Record<LaneKey, string> = {
   DONE: "Done",
 };
 
+type ViewState = "collapsed" | "minimized" | "expanded";
+
 export type ClientCard = {
   id: string;
   lane: LaneKey;
@@ -70,8 +72,10 @@ export function BoardClient({ projects }: Props) {
   const [localProjects, setLocalProjects] = useState<ClientProject[]>(projects);
   const [drawerCard, setDrawerCard] = useState<DrawerCard | null>(null);
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null);
+  // viewStates is per-project; default is "minimized" (apply lazily via getViewState).
+  const [viewStates, setViewStates] = useState<Record<string, ViewState>>({});
+  const [collapsedLanes, setCollapsedLanes] = useState<Set<LaneKey>>(new Set());
 
-  // When server data changes (e.g. after a revalidation), sync local state.
   useEffect(() => {
     setLocalProjects(projects);
   }, [projects]);
@@ -82,6 +86,28 @@ export function BoardClient({ projects }: Props) {
   );
 
   const projectIds = useMemo(() => localProjects.map((p) => p.id), [localProjects]);
+
+  const getViewState = (projectId: string): ViewState =>
+    viewStates[projectId] ?? "minimized";
+  const setProjectViewState = (projectId: string, state: ViewState) =>
+    setViewStates((prev) => ({ ...prev, [projectId]: state }));
+
+  const toggleLaneCollapsed = (lane: LaneKey) => {
+    setCollapsedLanes((prev) => {
+      const next = new Set(prev);
+      if (next.has(lane)) next.delete(lane);
+      else next.add(lane);
+      return next;
+    });
+  };
+
+  // Grid columns: project col + 4 lane cols. Collapsed lanes shrink to a thin strip.
+  const gridTemplateColumns = useMemo(() => {
+    const lanes = LANES.map((l) =>
+      collapsedLanes.has(l) ? "44px" : "minmax(160px, 1fr)",
+    );
+    return ["220px", ...lanes].join(" ");
+  }, [collapsedLanes]);
 
   const openCard = (project: ClientProject, card: ClientCard) => {
     setDrawerCard({
@@ -135,14 +161,12 @@ export function BoardClient({ projects }: Props) {
         return;
       }
 
-      // Cross-project moves not supported in step 4 (cards belong to projects).
       if (toProjectId !== fromProject) return;
 
       if (toLane === activeData.lane) {
         const sourceCards = laneCards(localProjects, fromProject, activeData.lane);
         const fromIdx = sourceCards.findIndex((c) => c.id === active.id);
         if (fromIdx < 0 || fromIdx === toIndex) return;
-        // arrayMove handles index adjustment for in-place move
         const newOrder = arrayMove(sourceCards, fromIdx, Math.min(toIndex, sourceCards.length - 1));
         setLocalProjects(replaceLaneCards(localProjects, fromProject, toLane, newOrder));
         void moveCardAction({
@@ -153,7 +177,6 @@ export function BoardClient({ projects }: Props) {
         return;
       }
 
-      // Cross-lane move
       const sourceCards = laneCards(localProjects, fromProject, activeData.lane);
       const card = sourceCards.find((c) => c.id === active.id);
       if (!card) return;
@@ -189,17 +212,38 @@ export function BoardClient({ projects }: Props) {
         onDragCancel={() => setActiveDrag(null)}
       >
         <section className={styles.boardScroll}>
-          <div className={styles.board}>
+          <div className={styles.board} style={{ gridTemplateColumns }}>
             <div className={styles.cornerCell} aria-hidden />
-            {LANES.map((lane) => (
-              <div key={lane} className={styles.laneHeader}>
-                {LANE_LABELS[lane]}
-              </div>
-            ))}
+            {LANES.map((lane) => {
+              const isCollapsed = collapsedLanes.has(lane);
+              return (
+                <button
+                  key={lane}
+                  type="button"
+                  className={`${styles.laneHeader} ${isCollapsed ? styles.laneHeaderCollapsed : ""}`}
+                  onClick={() => toggleLaneCollapsed(lane)}
+                  aria-pressed={isCollapsed}
+                  title={
+                    isCollapsed
+                      ? `Expand ${LANE_LABELS[lane]} column`
+                      : `Collapse ${LANE_LABELS[lane]} column`
+                  }
+                >
+                  {LANE_LABELS[lane]}
+                </button>
+              );
+            })}
 
             <SortableContext items={projectIds} strategy={verticalListSortingStrategy}>
               {localProjects.map((project) => (
-                <ProjectRow key={project.id} project={project} onCardClick={openCard} />
+                <ProjectRow
+                  key={project.id}
+                  project={project}
+                  viewState={getViewState(project.id)}
+                  onViewStateChange={(s) => setProjectViewState(project.id, s)}
+                  collapsedLanes={collapsedLanes}
+                  onCardClick={openCard}
+                />
               ))}
             </SortableContext>
           </div>
@@ -256,9 +300,15 @@ function renderDragOverlay(active: DragData | null, projects: ClientProject[]) {
 
 function ProjectRow({
   project,
+  viewState,
+  onViewStateChange,
+  collapsedLanes,
   onCardClick,
 }: {
   project: ClientProject;
+  viewState: ViewState;
+  onViewStateChange: (s: ViewState) => void;
+  collapsedLanes: Set<LaneKey>;
   onCardClick: (project: ClientProject, card: ClientCard) => void;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -271,6 +321,7 @@ function ProjectRow({
   const style = {
     transform: CSS.Transform.toString(sortable.transform),
     transition: sortable.transition,
+    opacity: sortable.isDragging ? 0.4 : 1,
   };
 
   const handleDeleteProject = () => {
@@ -280,15 +331,14 @@ function ProjectRow({
     });
   };
 
+  const isRowCollapsed = viewState === "collapsed";
+
   return (
     <>
       <div
         ref={sortable.setNodeRef}
-        style={{
-          ...style,
-          opacity: sortable.isDragging ? 0.4 : 1,
-        }}
-        className={styles.projectCell}
+        style={style}
+        className={`${styles.projectCell} ${isRowCollapsed ? styles.projectCellCollapsed : ""}`}
       >
         <button
           type="button"
@@ -301,8 +351,9 @@ function ProjectRow({
         </button>
         <div className={styles.projectInfo}>
           <span className={styles.projectName}>{project.name}</span>
-          <span className={styles.projectCount}>{cardCount}</span>
+          {!isRowCollapsed && <span className={styles.projectCount}>{cardCount}</span>}
         </div>
+        <ViewStateToggle value={viewState} onChange={onViewStateChange} />
         <button
           type="button"
           className={styles.projectDelete}
@@ -320,6 +371,8 @@ function ProjectRow({
           projectId={project.id}
           lane={lane}
           cards={project.lanes[lane]}
+          viewState={viewState}
+          isLaneCollapsed={collapsedLanes.has(lane)}
           onCardClick={(card) => onCardClick(project, card)}
         />
       ))}
@@ -327,15 +380,59 @@ function ProjectRow({
   );
 }
 
+function ViewStateToggle({
+  value,
+  onChange,
+}: {
+  value: ViewState;
+  onChange: (s: ViewState) => void;
+}) {
+  return (
+    <div className={styles.toggleGroup} role="group" aria-label="Row layout">
+      <button
+        type="button"
+        onClick={() => onChange("collapsed")}
+        className={`${styles.toggleBtn} ${value === "collapsed" ? styles.toggleBtnActive : ""}`}
+        aria-pressed={value === "collapsed"}
+        title="Collapse row"
+      >
+        ▸
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("minimized")}
+        className={`${styles.toggleBtn} ${value === "minimized" ? styles.toggleBtnActive : ""}`}
+        aria-pressed={value === "minimized"}
+        title="Minimize row (default)"
+      >
+        ▤
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("expanded")}
+        className={`${styles.toggleBtn} ${value === "expanded" ? styles.toggleBtnActive : ""}`}
+        aria-pressed={value === "expanded"}
+        title="Expand row"
+      >
+        ▦
+      </button>
+    </div>
+  );
+}
+
 function LaneCell({
   projectId,
   lane,
   cards,
+  viewState,
+  isLaneCollapsed,
   onCardClick,
 }: {
   projectId: string;
   lane: LaneKey;
   cards: ClientCard[];
+  viewState: ViewState;
+  isLaneCollapsed: boolean;
   onCardClick: (card: ClientCard) => void;
 }) {
   const [adding, setAdding] = useState(false);
@@ -371,60 +468,77 @@ function LaneCell({
     });
   };
 
-  return (
-    <div
-      ref={droppable.setNodeRef}
-      className={`${styles.laneCell} ${droppable.isOver ? styles.laneCellOver : ""}`}
-    >
-      <SortableContext
-        items={cards.map((c) => c.id)}
-        strategy={verticalListSortingStrategy}
-      >
-        {cards.length === 0 && !adding ? <div className={styles.laneEmpty} aria-hidden /> : null}
-        {cards.map((card) => (
-          <SortableCardItem
-            key={card.id}
-            card={card}
-            projectId={projectId}
-            onClick={() => onCardClick(card)}
-          />
-        ))}
-      </SortableContext>
+  const isDone = lane === "DONE";
+  const isRowCollapsed = viewState === "collapsed";
+  const isMinimized = viewState === "minimized";
+  const hideContent = isRowCollapsed || isLaneCollapsed;
 
-      {adding ? (
-        <form
-          className={styles.addForm}
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-        >
-          <input
-            className={styles.addInput}
-            autoFocus
-            placeholder="Card title"
-            maxLength={200}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setAdding(false);
-                setTitle("");
-              }
-            }}
-            onBlur={submit}
-            disabled={isPending}
-          />
-        </form>
-      ) : (
-        <button
-          type="button"
-          className={styles.addBtn}
-          onClick={() => setAdding(true)}
-          disabled={isPending}
-        >
-          + Add card
-        </button>
+  const cellClass = [
+    styles.laneCell,
+    isDone && styles.laneCellDone,
+    isMinimized && styles.laneCellMinimized,
+    isRowCollapsed && styles.laneCellRowCollapsed,
+    isLaneCollapsed && styles.laneCellColCollapsed,
+    droppable.isOver && styles.laneCellOver,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div ref={droppable.setNodeRef} className={cellClass}>
+      {hideContent ? null : (
+        <div className={styles.laneInner}>
+          <SortableContext
+            items={cards.map((c) => c.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {cards.length === 0 && !adding ? <div className={styles.laneEmpty} aria-hidden /> : null}
+            {cards.map((card) => (
+              <SortableCardItem
+                key={card.id}
+                card={card}
+                projectId={projectId}
+                onClick={() => onCardClick(card)}
+              />
+            ))}
+          </SortableContext>
+
+          {adding ? (
+            <form
+              className={styles.addForm}
+              onSubmit={(e) => {
+                e.preventDefault();
+                submit();
+              }}
+            >
+              <input
+                className={styles.addInput}
+                autoFocus
+                placeholder="Card title"
+                maxLength={200}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setAdding(false);
+                    setTitle("");
+                  }
+                }}
+                onBlur={submit}
+                disabled={isPending}
+              />
+            </form>
+          ) : (
+            <button
+              type="button"
+              className={styles.addBtn}
+              onClick={() => setAdding(true)}
+              disabled={isPending}
+            >
+              + Add card
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
