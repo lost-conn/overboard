@@ -26,6 +26,21 @@ model User {
   sessions Session[]
   projects Project[]
   ideas    Idea[]
+  tokens   Token[]
+}
+
+model Token {
+  id         String    @id @default(cuid())
+  userId     String
+  hash       String    @unique
+  label      String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Session {

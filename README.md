@@ -23,6 +23,11 @@ Idea Pool until they earn the promotion to a real row.
   see anyone else's data. A public auth system in service of a private
   database, which is — on reflection — a single-tenant app with extra
   steps. That was the requirement.
+- **MCP server.** The board exposes itself over the Model Context
+  Protocol at `/api/mcp`, so Claude (or any MCP client) can list, create,
+  move, and delete cards on your behalf. Bearer-token auth, minted at
+  `/settings/tokens`. Useful for "remind me to do X" voice notes that
+  end up as backlog cards without you having to open the laptop.
 
 ## Stack
 
@@ -52,9 +57,20 @@ snippet looks like:
 
 ```caddy
 overboard.example.com {
-    reverse_proxy 127.0.0.1:10946
+    reverse_proxy 127.0.0.1:10946 {
+        flush_interval -1
+        transport http {
+            response_header_timeout 5m
+            read_timeout 5m
+        }
+    }
 }
 ```
+
+The `flush_interval` + bumped timeouts are for the MCP endpoint —
+default Caddy upstream timeout (30s) is fine for the web UI but tight
+for any long-running tool call. If you don't plan to use MCP, the bare
+`reverse_proxy 127.0.0.1:10946` form is enough.
 
 The SQLite database lives at `./data/app.db` via a bind mount, so it
 survives image rebuilds and backups are literally `cp data/app.db
@@ -105,14 +121,49 @@ suspiciously long time to diagnose.
 
 - **SQLite, not Postgres.** This is a single-process app for a
   single-laptop deployment. Anything more would be cosplay.
-- **Server Actions for everything.** No `/api` route handlers — every
-  mutation is a server action with a `userId` guard. Less code, fewer
-  shapes to maintain.
+- **Server Actions for the UI, one route handler for MCP.** Browser
+  mutations are server actions with a `userId` guard from the session
+  cookie. The MCP endpoint at `/api/mcp` is the lone exception: it
+  resolves a bearer token to a `userId` and calls the same core
+  functions the server actions wrap. The actions and the MCP tools both
+  delegate to `src/lib/board/mutations.ts` and `src/lib/ideas/mutations.ts`
+  so ownership checks and validation only exist in one place.
 - **Optimistic local state for drag-and-drop.** The board updates
   before the network request finishes. `revalidatePath('/')` reconciles
   if anything drifts.
 - **No backups in-repo.** The DB is one file on disk; back it up the
   way you back up anything else on the laptop, or don't. I haven't yet.
+
+## MCP usage
+
+Mint a token at `/settings/tokens`. It's shown once, then stored as a
+SHA-256 hash — copy it somewhere before leaving the page. Tokens grant
+full access to your data, so revoke any you don't recognize.
+
+Wire it into Claude Code:
+
+```bash
+claude mcp add overboard --transport http \
+  https://overboard.example.com/api/mcp \
+  --header "Authorization: Bearer ob_pat_..."
+```
+
+Then in a Claude session, `/mcp` lists the tools and you can ask things
+like "what's on my To do list across all projects" or "add a card to
+the 'Home server' project to replace the UPS battery".
+
+The tool surface is roughly: `list_projects`, `create_project`,
+`rename_project`, `archive_project`, `delete_project`, `list_cards`,
+`get_card`, `create_card`, `update_card`, `move_card`, `delete_card`,
+`list_ideas`, `create_idea`, `update_idea`, `delete_idea`,
+`promote_idea`, `whoami`. Bodies sent over MCP are stored as plain
+text and synced to a minimal TipTap doc, so they show up in the web
+editor and round-trip cleanly. Rich formatting (bold, links, task
+lists) still has to be authored in the web UI.
+
+One caveat: MCP mutations skip the `revalidatePath` calls the web UI
+relies on. If you have the board open in another tab while Claude is
+editing it, you'll need to refresh to see the changes.
 
 ## License
 

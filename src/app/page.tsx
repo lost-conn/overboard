@@ -27,6 +27,9 @@ export default async function Home() {
           <Link className={styles.navLink} href="/ideas">
             Idea pool
           </Link>
+          <Link className={styles.navLink} href="/settings/tokens">
+            Tokens
+          </Link>
           <form action={logoutAction}>
             <button className={styles.iconBtn} type="submit">
               Sign out
