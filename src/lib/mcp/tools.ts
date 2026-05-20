@@ -155,6 +155,29 @@ const renameProject: Tool = {
   },
 };
 
+const setProjectPriority: Tool = {
+  name: "set_project_priority",
+  description:
+    "Set a project's priority (lower = higher in the list). Default is 1. Use 0 or a negative number to pin to the top. The activity-based sort still orders projects within the same priority bucket.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      priority: { type: "integer", minimum: -99, maximum: 99 },
+    },
+    required: ["id", "priority"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    return boardM.setProjectPriority(
+      ctx.userId,
+      requireString(rec, "id"),
+      requireInt(rec, "priority"),
+    );
+  },
+};
+
 const archiveProject: Tool = {
   name: "archive_project",
   description: "Archive (or unarchive) a project. Archived projects hide from the default board view but are not deleted.",
@@ -423,6 +446,7 @@ export const TOOLS: Tool[] = [
   listProjects,
   createProject,
   renameProject,
+  setProjectPriority,
   archiveProject,
   deleteProject,
   listCards,

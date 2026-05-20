@@ -58,7 +58,7 @@ model Project {
   id        String   @id @default(cuid())
   userId    String
   name      String
-  order     Int
+  priority  Int      @default(1) // lower = higher in list; can be 0 or negative
   archived  Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -67,7 +67,7 @@ model Project {
   cards Card[]
 
   @@index([userId])
-  @@index([userId, order])
+  @@index([userId, priority])
 }
 
 model Card {

@@ -58,7 +58,7 @@ function toClientProject(p: ProjectRow): ClientProject {
       contentJson: parseContent(c.contentJson),
     }));
   }
-  return { id: p.id, name: p.name, lanes };
+  return { id: p.id, name: p.name, priority: p.priority, lanes };
 }
 
 function parseContent(raw: string | null): Record<string, unknown> | null {

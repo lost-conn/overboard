@@ -91,10 +91,13 @@ export async function moveCardAction(args: {
   revalidatePath("/");
 }
 
-export async function reorderProjectsAction(orderedIds: string[]): Promise<void> {
+export async function setProjectPriorityAction(args: {
+  id: string;
+  priority: number;
+}): Promise<void> {
   const userId = await requireUserId();
   try {
-    await core.reorderProjects(userId, orderedIds);
+    await core.setProjectPriority(userId, args.id, args.priority);
   } catch (err) {
     swallowUserErrors(err);
   }

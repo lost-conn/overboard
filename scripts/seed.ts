@@ -64,7 +64,7 @@ async function main() {
       data: {
         userId: user.id,
         name: sample.name,
-        order: i,
+        priority: i + 1,
       },
     });
 

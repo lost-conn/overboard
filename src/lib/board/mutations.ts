@@ -26,16 +26,38 @@ function parseLane(raw: unknown): Lane {
 
 export async function createProject(userId: string, name: string): Promise<Project> {
   const clean = trimTitle(name, 120);
-  const max = await db.project.findFirst({
-    where: { userId },
-    orderBy: { order: "desc" },
-    select: { order: true },
-  });
   const project = await db.project.create({
-    data: { userId, name: clean, order: (max?.order ?? -1) + 1 },
+    data: { userId, name: clean },
   });
   emitBoard(userId);
   return project;
+}
+
+const PRIORITY_MIN = -99;
+const PRIORITY_MAX = 99;
+
+export async function setProjectPriority(
+  userId: string,
+  projectId: string,
+  priority: number,
+): Promise<Project> {
+  if (!Number.isInteger(priority)) {
+    throw new ValidationError("priority must be an integer");
+  }
+  if (priority < PRIORITY_MIN || priority > PRIORITY_MAX) {
+    throw new ValidationError(`priority must be between ${PRIORITY_MIN} and ${PRIORITY_MAX}`);
+  }
+  const project = await db.project.findFirst({
+    where: { id: projectId, userId },
+    select: { id: true },
+  });
+  if (!project) throw new NotFoundError("project not found");
+  const updated = await db.project.update({
+    where: { id: project.id },
+    data: { priority },
+  });
+  emitBoard(userId);
+  return updated;
 }
 
 export async function renameProject(
@@ -79,26 +101,6 @@ export async function deleteProject(userId: string, projectId: string): Promise<
   emitBoard(userId);
 }
 
-export async function reorderProjects(
-  userId: string,
-  orderedIds: string[],
-): Promise<void> {
-  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
-    throw new ValidationError("orderedIds must be a non-empty array");
-  }
-  const owned = await db.project.findMany({
-    where: { userId },
-    select: { id: true },
-  });
-  const ownedSet = new Set(owned.map((p) => p.id));
-  const valid = orderedIds.filter((id) => typeof id === "string" && ownedSet.has(id));
-  if (valid.length === 0) throw new ValidationError("no valid project ids");
-
-  await db.$transaction(
-    valid.map((id, i) => db.project.update({ where: { id }, data: { order: i } })),
-  );
-  emitBoard(userId);
-}
 
 export async function createCard(
   userId: string,

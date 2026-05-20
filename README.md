@@ -10,9 +10,12 @@ Idea Pool until they earn the promotion to a real row.
 ## What it does
 
 - **Mega-board view.** Every project is a row; lanes are columns; cards
-  drag around within and between lanes. Project rows themselves are
-  draggable, in case the order of your unfinished business reveals
-  something about your priorities.
+  drag around within and between lanes. Project rows sort themselves by
+  recent activity (cards in DOING and TODO weigh heaviest, with an
+  exponential time-decay on edits), with a small numeric **priority**
+  field on each row as the manual override — lower number sorts higher,
+  defaults to 1, can be 0 or negative if you want something pinned to
+  the very top.
 - **WYSIWYG card editor** with headings, lists, code, links, and most
   importantly task lists, because half the reason a project stalls is
   that the next step is actually three steps.

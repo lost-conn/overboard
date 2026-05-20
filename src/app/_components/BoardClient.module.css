@@ -62,36 +62,39 @@
   padding: 4px 8px 4px 4px;
 }
 
-.dragHandle {
+.priorityInput {
   flex-shrink: 0;
-  width: 16px;
-  height: 24px;
-  font-size: 14px;
-  line-height: 1;
+  width: 36px;
+  padding: 3px 4px;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  text-align: center;
   color: var(--text-dim);
   background: transparent;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 4px;
-  cursor: grab;
-  opacity: 0.35;
-  transition: opacity 0.15s, background 0.15s, color 0.15s;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  touch-action: none;
+  outline: none;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
-.dragHandle:active {
-  cursor: grabbing;
+.priorityInput::-webkit-outer-spin-button,
+.priorityInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
-.projectCell:hover .dragHandle {
-  opacity: 1;
-}
-
-.dragHandle:hover {
-  background: var(--bg);
+.projectCell:hover .priorityInput {
+  border-color: var(--border);
   color: var(--text);
+}
+
+.priorityInput:focus {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--bg);
 }
 
 .projectInfo {

@@ -22,20 +22,13 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  ChevronRight,
-  GripVertical,
-  Plus,
-  Rows3,
-  Rows4,
-  X,
-} from "lucide-react";
+import { ChevronRight, Plus, Rows3, Rows4, X } from "lucide-react";
 import {
   createCardAction,
   deleteCardAction,
   deleteProjectAction,
   moveCardAction,
-  reorderProjectsAction,
+  setProjectPriorityAction,
   updateCardAction,
 } from "@/lib/actions/board";
 import { CardDrawer, type DrawerCard } from "./CardDrawer";
@@ -64,12 +57,12 @@ export type ClientCard = {
 export type ClientProject = {
   id: string;
   name: string;
+  priority: number;
   lanes: Record<LaneKey, ClientCard[]>;
 };
 
 type DragData =
   | { type: "card"; cardId: string; projectId: string; lane: LaneKey }
-  | { type: "project"; projectId: string }
   | { type: "lane"; projectId: string; lane: LaneKey };
 
 type Props = { projects: ClientProject[] };
@@ -181,17 +174,6 @@ export function BoardClient({ projects }: Props) {
     const overData = over.data.current as DragData | undefined;
     if (!activeData) return;
 
-    if (activeData.type === "project") {
-      if (active.id === over.id) return;
-      const oldIndex = localProjects.findIndex((p) => p.id === active.id);
-      const newIndex = localProjects.findIndex((p) => p.id === over.id);
-      if (oldIndex < 0 || newIndex < 0) return;
-      const next = arrayMove(localProjects, oldIndex, newIndex);
-      setLocalProjects(next);
-      void reorderProjectsAction(next.map((p) => p.id));
-      return;
-    }
-
     if (activeData.type === "card") {
       const fromProject = activeData.projectId;
       let toProjectId: string;
@@ -285,18 +267,16 @@ export function BoardClient({ projects }: Props) {
               );
             })}
 
-            <SortableContext items={projectIds} strategy={verticalListSortingStrategy}>
-              {localProjects.map((project) => (
-                <ProjectRow
-                  key={project.id}
-                  project={project}
-                  viewState={getViewState(project.id)}
-                  onViewStateChange={(s) => setProjectViewState(project.id, s)}
-                  collapsedLanes={collapsedLanes}
-                  onCardClick={openCard}
-                />
-              ))}
-            </SortableContext>
+            {localProjects.map((project) => (
+              <ProjectRow
+                key={project.id}
+                project={project}
+                viewState={getViewState(project.id)}
+                onViewStateChange={(s) => setProjectViewState(project.id, s)}
+                collapsedLanes={collapsedLanes}
+                onCardClick={openCard}
+              />
+            ))}
           </div>
         </section>
 
@@ -341,11 +321,6 @@ function renderDragOverlay(active: DragData | null, projects: ClientProject[]) {
     if (!card) return null;
     return <div className={styles.cardGhost}>{card.title}</div>;
   }
-  if (active.type === "project") {
-    const project = projects.find((p) => p.id === active.projectId);
-    if (!project) return null;
-    return <div className={styles.projectGhost}>{project.name}</div>;
-  }
   return null;
 }
 
@@ -365,20 +340,19 @@ function ProjectRow({
   const [isPending, startTransition] = useTransition();
   const cardCount = Object.values(project.lanes).reduce((n, cs) => n + cs.length, 0);
 
-  const sortable = useSortable({
-    id: project.id,
-    data: { type: "project", projectId: project.id } satisfies DragData,
-  });
-  const style = {
-    transform: CSS.Transform.toString(sortable.transform),
-    transition: sortable.transition,
-    opacity: sortable.isDragging ? 0.4 : 1,
-  };
-
   const handleDeleteProject = () => {
     if (!confirm(`Delete project "${project.name}" and all ${cardCount} card(s)?`)) return;
     startTransition(async () => {
       await deleteProjectAction(project.id);
+    });
+  };
+
+  const commitPriority = (raw: string) => {
+    const next = parseInt(raw, 10);
+    if (!Number.isInteger(next) || next === project.priority) return;
+    const clamped = Math.max(-99, Math.min(99, next));
+    startTransition(async () => {
+      await setProjectPriorityAction({ id: project.id, priority: clamped });
     });
   };
 
@@ -387,19 +361,22 @@ function ProjectRow({
   return (
     <>
       <div
-        ref={sortable.setNodeRef}
-        style={style}
         className={`${styles.projectCell} ${isRowCollapsed ? styles.projectCellCollapsed : ""}`}
       >
-        <button
-          type="button"
-          className={styles.dragHandle}
-          aria-label={`Drag project ${project.name}`}
-          {...sortable.attributes}
-          {...sortable.listeners}
-        >
-          <GripVertical size={14} aria-hidden />
-        </button>
+        <input
+          key={project.priority}
+          type="number"
+          className={styles.priorityInput}
+          defaultValue={project.priority}
+          min={-99}
+          max={99}
+          onBlur={(e) => commitPriority(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
+          aria-label={`Priority for ${project.name}`}
+          title="Lower = higher in list. Algorithm sorts within the same priority."
+        />
         <div className={styles.projectInfo}>
           <span className={styles.projectName}>{project.name}</span>
           {!isRowCollapsed && <span className={styles.projectCount}>{cardCount}</span>}

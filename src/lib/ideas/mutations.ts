@@ -106,18 +106,11 @@ export async function promoteIdea(userId: string, ideaId: string): Promise<{ pro
   });
   if (!idea) throw new NotFoundError("idea not found");
 
-  const maxProject = await db.project.findFirst({
-    where: { userId },
-    orderBy: { order: "desc" },
-    select: { order: true },
-  });
-
   const result = await db.$transaction(async (tx) => {
     const project = await tx.project.create({
       data: {
         userId,
         name: idea.title,
-        order: (maxProject?.order ?? -1) + 1,
       },
     });
 
