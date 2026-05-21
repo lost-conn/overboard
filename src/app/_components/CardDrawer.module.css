@@ -116,6 +116,10 @@
   background: var(--surface);
 }
 
+.tagSlot {
+  margin: 0 20px 14px;
+}
+
 .editorSlot {
   flex: 1;
   padding: 0 20px;

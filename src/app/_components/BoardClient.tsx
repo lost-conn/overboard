@@ -31,7 +31,10 @@ import {
   setProjectPriorityAction,
   updateCardAction,
 } from "@/lib/actions/board";
+import { setCardTagsAction } from "@/lib/actions/tags";
 import { CardDrawer, type DrawerCard } from "./CardDrawer";
+import { TagChip, TagChipOverflow } from "./TagChip";
+import { TagFilterBar, useSelectedTagNames } from "./TagFilterBar";
 import { useBoardEvents } from "./useBoardEvents";
 import styles from "./BoardClient.module.css";
 
@@ -47,11 +50,14 @@ const LANE_LABELS: Record<LaneKey, string> = {
 
 type ViewState = "collapsed" | "minimized" | "expanded";
 
+export type ClientTag = { id: string; name: string; color: string };
+
 export type ClientCard = {
   id: string;
   lane: LaneKey;
   title: string;
   contentJson: Record<string, unknown> | null;
+  tags: ClientTag[];
 };
 
 export type ClientProject = {
@@ -65,14 +71,16 @@ type DragData =
   | { type: "card"; cardId: string; projectId: string; lane: LaneKey }
   | { type: "lane"; projectId: string; lane: LaneKey };
 
-type Props = { projects: ClientProject[] };
+type Props = { projects: ClientProject[]; allTags: ClientTag[] };
 
 function laneDroppableId(projectId: string, lane: LaneKey): string {
   return `lane:${projectId}:${lane}`;
 }
 
-export function BoardClient({ projects }: Props) {
+export function BoardClient({ projects, allTags }: Props) {
   const router = useRouter();
+  const selectedTagNames = useSelectedTagNames();
+  const filterActive = selectedTagNames.length > 0;
   const [localProjects, setLocalProjects] = useState<ClientProject[]>(projects);
   const [drawerCard, setDrawerCard] = useState<DrawerCard | null>(null);
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null);
@@ -131,6 +139,30 @@ export function BoardClient({ projects }: Props) {
 
   const projectIds = useMemo(() => localProjects.map((p) => p.id), [localProjects]);
 
+  const displayProjects = useMemo(() => {
+    if (!filterActive) return localProjects;
+    const sel = new Set(selectedTagNames);
+    return localProjects
+      .map((p) => {
+        const lanes: Record<LaneKey, ClientCard[]> = {
+          BACKLOG: [],
+          TODO: [],
+          DOING: [],
+          DONE: [],
+        };
+        let any = false;
+        for (const lane of LANES) {
+          const kept = p.lanes[lane].filter((c) =>
+            c.tags.some((t) => sel.has(t.name)),
+          );
+          lanes[lane] = kept;
+          if (kept.length > 0) any = true;
+        }
+        return any ? { ...p, lanes } : null;
+      })
+      .filter((p): p is ClientProject => p !== null);
+  }, [filterActive, selectedTagNames, localProjects]);
+
   const getViewState = (projectId: string): ViewState =>
     viewStates[projectId] ?? "minimized";
   const setProjectViewState = (projectId: string, state: ViewState) =>
@@ -159,6 +191,7 @@ export function BoardClient({ projects }: Props) {
       crumbs: [project.name, LANE_LABELS[card.lane]],
       title: card.title,
       contentJson: card.contentJson,
+      tags: card.tags,
     });
   };
 
@@ -168,6 +201,7 @@ export function BoardClient({ projects }: Props) {
 
   const handleDragEnd = (e: DragEndEvent) => {
     setActiveDrag(null);
+    if (filterActive) return;
     const { active, over } = e;
     if (!over) return;
     const activeData = active.data.current as DragData | undefined;
@@ -236,6 +270,11 @@ export function BoardClient({ projects }: Props) {
 
   return (
     <>
+      {allTags.length > 0 ? (
+        <div className={styles.filterBarSlot}>
+          <TagFilterBar allTags={allTags} />
+        </div>
+      ) : null}
       <DndContext
         id="board"
         sensors={sensors}
@@ -267,16 +306,21 @@ export function BoardClient({ projects }: Props) {
               );
             })}
 
-            {localProjects.map((project) => (
-              <ProjectRow
-                key={project.id}
-                project={project}
-                viewState={getViewState(project.id)}
-                onViewStateChange={(s) => setProjectViewState(project.id, s)}
-                collapsedLanes={collapsedLanes}
-                onCardClick={openCard}
-              />
-            ))}
+            {displayProjects.length === 0 ? (
+              <div className={styles.filterEmpty}>No cards match the selected tags.</div>
+            ) : (
+              displayProjects.map((project) => (
+                <ProjectRow
+                  key={project.id}
+                  project={project}
+                  viewState={getViewState(project.id)}
+                  onViewStateChange={(s) => setProjectViewState(project.id, s)}
+                  collapsedLanes={collapsedLanes}
+                  onCardClick={openCard}
+                  dndDisabled={filterActive}
+                />
+              ))
+            )}
           </div>
         </section>
 
@@ -285,9 +329,13 @@ export function BoardClient({ projects }: Props) {
 
       <CardDrawer
         card={drawerCard}
+        allTags={allTags}
         onClose={() => setDrawerCard(null)}
-        onSave={async ({ id, title, contentJson }) => {
+        onSave={async ({ id, title, contentJson, tags, tagsChanged }) => {
           await updateCardAction({ id, title, contentJson });
+          if (tagsChanged) {
+            await setCardTagsAction({ cardId: id, tags });
+          }
         }}
         onDelete={async (id) => {
           await deleteCardAction(id);
@@ -330,12 +378,14 @@ function ProjectRow({
   onViewStateChange,
   collapsedLanes,
   onCardClick,
+  dndDisabled,
 }: {
   project: ClientProject;
   viewState: ViewState;
   onViewStateChange: (s: ViewState) => void;
   collapsedLanes: Set<LaneKey>;
   onCardClick: (project: ClientProject, card: ClientCard) => void;
+  dndDisabled: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const cardCount = Object.values(project.lanes).reduce((n, cs) => n + cs.length, 0);
@@ -402,6 +452,7 @@ function ProjectRow({
           viewState={viewState}
           isLaneCollapsed={collapsedLanes.has(lane)}
           onCardClick={(card) => onCardClick(project, card)}
+          dndDisabled={dndDisabled}
         />
       ))}
     </>
@@ -455,6 +506,7 @@ function LaneCell({
   viewState,
   isLaneCollapsed,
   onCardClick,
+  dndDisabled,
 }: {
   projectId: string;
   lane: LaneKey;
@@ -462,6 +514,7 @@ function LaneCell({
   viewState: ViewState;
   isLaneCollapsed: boolean;
   onCardClick: (card: ClientCard) => void;
+  dndDisabled: boolean;
 }) {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
@@ -471,6 +524,7 @@ function LaneCell({
   const droppable = useDroppable({
     id: laneDroppableId(projectId, lane),
     data: { type: "lane", projectId, lane } satisfies DragData,
+    disabled: dndDisabled,
   });
 
   const submit = () => {
@@ -527,11 +581,12 @@ function LaneCell({
                 card={card}
                 projectId={projectId}
                 onClick={() => onCardClick(card)}
+                dndDisabled={dndDisabled}
               />
             ))}
           </SortableContext>
 
-          {adding ? (
+          {dndDisabled ? null : adding ? (
             <form
               className={styles.addForm}
               onSubmit={(e) => {
@@ -576,10 +631,12 @@ function SortableCardItem({
   card,
   projectId,
   onClick,
+  dndDisabled,
 }: {
   card: ClientCard;
   projectId: string;
   onClick: () => void;
+  dndDisabled: boolean;
 }) {
   const sortable = useSortable({
     id: card.id,
@@ -589,12 +646,17 @@ function SortableCardItem({
       projectId,
       lane: card.lane,
     } satisfies DragData,
+    disabled: dndDisabled,
   });
   const style = {
     transform: CSS.Transform.toString(sortable.transform),
     transition: sortable.transition,
     opacity: sortable.isDragging ? 0.4 : 1,
   };
+
+  const MAX_CARD_CHIPS = 3;
+  const shown = card.tags.slice(0, MAX_CARD_CHIPS);
+  const overflow = card.tags.length - shown.length;
 
   return (
     <button
@@ -606,8 +668,18 @@ function SortableCardItem({
       {...sortable.attributes}
       {...sortable.listeners}
     >
-      <span className={styles.cardTitle}>{card.title}</span>
-      {card.contentJson ? <span className={styles.cardDot} aria-hidden /> : null}
+      <span className={styles.cardHead}>
+        <span className={styles.cardTitle}>{card.title}</span>
+        {card.contentJson ? <span className={styles.cardDot} aria-hidden /> : null}
+      </span>
+      {card.tags.length > 0 ? (
+        <span className={styles.cardTags}>
+          {shown.map((t) => (
+            <TagChip key={t.id} tag={t} />
+          ))}
+          {overflow > 0 ? <TagChipOverflow count={overflow} /> : null}
+        </span>
+      ) : null}
     </button>
   );
 }

@@ -4,28 +4,39 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { CardEditor } from "./Editor";
+import { TagInput } from "./TagInput";
 import styles from "./CardDrawer.module.css";
 
 type EditorJSON = Record<string, unknown>;
+type Tag = { id: string; name: string; color: string };
 
 export type DrawerCard = {
   id: string;
   crumbs: string[];
   title: string;
   contentJson: EditorJSON | null;
+  tags: Tag[];
 };
 
 type Props = {
   card: DrawerCard | null;
+  allTags: Tag[];
   onClose: () => void;
-  onSave: (args: { id: string; title: string; contentJson: string | null }) => Promise<void>;
+  onSave: (args: {
+    id: string;
+    title: string;
+    contentJson: string | null;
+    tags: string[];
+    tagsChanged: boolean;
+  }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 };
 
-export function CardDrawer({ card, onClose, onSave, onDelete }: Props) {
+export function CardDrawer({ card, allTags, onClose, onSave, onDelete }: Props) {
   const open = card !== null;
   const [title, setTitle] = useState(card?.title ?? "");
   const [contentJson, setContentJson] = useState<EditorJSON | null>(card?.contentJson ?? null);
+  const [tagNames, setTagNames] = useState<string[]>(card?.tags.map((t) => t.name) ?? []);
   const [isPending, startTransition] = useTransition();
   const [dirty, setDirty] = useState(false);
 
@@ -33,11 +44,17 @@ export function CardDrawer({ card, onClose, onSave, onDelete }: Props) {
     if (card) {
       setTitle(card.title);
       setContentJson(card.contentJson);
+      setTagNames(card.tags.map((t) => t.name));
       setDirty(false);
     }
   }, [card]);
 
   if (!card) return null;
+
+  const originalTagNames = card.tags.map((t) => t.name);
+  const tagsChanged =
+    tagNames.length !== originalTagNames.length ||
+    tagNames.some((n, i) => n !== originalTagNames[i]);
 
   const handleSave = () => {
     const id = card.id;
@@ -48,6 +65,8 @@ export function CardDrawer({ card, onClose, onSave, onDelete }: Props) {
         id,
         title: trimmed,
         contentJson: contentJson ? JSON.stringify(contentJson) : null,
+        tags: tagNames,
+        tagsChanged,
       });
       onClose();
     });
@@ -109,6 +128,17 @@ export function CardDrawer({ card, onClose, onSave, onDelete }: Props) {
             maxLength={200}
             autoFocus
           />
+
+          <div className={styles.tagSlot}>
+            <TagInput
+              value={tagNames}
+              suggestions={allTags.map((t) => ({ name: t.name, color: t.color }))}
+              onChange={(next) => {
+                setTagNames(next);
+                setDirty(true);
+              }}
+            />
+          </div>
 
           <div className={styles.editorSlot}>
             <CardEditor

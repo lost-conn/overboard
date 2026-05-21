@@ -27,6 +27,7 @@ model User {
   projects Project[]
   ideas    Idea[]
   tokens   Token[]
+  tags     Tag[]
 }
 
 model Token {
@@ -82,6 +83,7 @@ model Card {
   updatedAt   DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tags    CardTag[]
 
   @@index([projectId])
   @@index([projectId, lane, order])
@@ -98,7 +100,45 @@ model Idea {
   updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tags IdeaTag[]
 
   @@index([userId])
   @@index([userId, order])
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String // normalized lowercase
+  color     String? // optional hex override; otherwise derived from name
+  createdAt DateTime @default(now())
+
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cards CardTag[]
+  ideas IdeaTag[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model CardTag {
+  cardId String
+  tagId  String
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, tagId])
+  @@index([tagId])
+}
+
+model IdeaTag {
+  ideaId String
+  tagId  String
+
+  idea Idea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([ideaId, tagId])
+  @@index([tagId])
 }

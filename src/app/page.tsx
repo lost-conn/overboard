@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { getBoardForUser, type ProjectRow } from "@/lib/board";
+import { listTags } from "@/lib/tags";
 import { Lane } from "@/generated/prisma/enums";
 import { logoutAction } from "./(auth)/actions";
 import { BoardClient, type ClientProject } from "./_components/BoardClient";
@@ -12,7 +13,10 @@ export default async function Home() {
   const user = await currentUser();
   if (!user) redirect("/login");
 
-  const projects = await getBoardForUser(user.id);
+  const [projects, allTags] = await Promise.all([
+    getBoardForUser(user.id),
+    listTags(user.id),
+  ]);
   const clientProjects = projects.map(toClientProject);
 
   return (
@@ -38,7 +42,11 @@ export default async function Home() {
         </div>
       </header>
 
-      {clientProjects.length === 0 ? <EmptyState /> : <BoardClient projects={clientProjects} />}
+      {clientProjects.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <BoardClient projects={clientProjects} allTags={allTags} />
+      )}
     </main>
   );
 }
@@ -56,6 +64,7 @@ function toClientProject(p: ProjectRow): ClientProject {
       lane: c.lane,
       title: c.title,
       contentJson: parseContent(c.contentJson),
+      tags: c.tags,
     }));
   }
   return { id: p.id, name: p.name, priority: p.priority, lanes };

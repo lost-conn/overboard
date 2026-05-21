@@ -250,9 +250,9 @@
 
 .card {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
   padding: 8px 10px;
   font-size: 13px;
   line-height: 1.35;
@@ -268,6 +268,31 @@
     border-color 0.15s,
     box-shadow 0.15s,
     transform 0.05s;
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cardTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.filterEmpty {
+  grid-column: 1 / -1;
+  padding: 24px 12px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+.filterBarSlot {
+  padding: 12px 24px 0;
 }
 
 .card:hover {

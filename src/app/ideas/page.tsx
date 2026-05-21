@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { getIdeasForUser } from "@/lib/ideas";
+import { listTags } from "@/lib/tags";
 import { logoutAction } from "../(auth)/actions";
 import { IdeasClient, type ClientIdea } from "../_components/IdeasClient";
 import styles from "./ideas.module.css";
@@ -11,11 +12,15 @@ export default async function IdeasPage() {
   const user = await currentUser();
   if (!user) redirect("/login");
 
-  const ideas = await getIdeasForUser(user.id);
+  const [ideas, allTags] = await Promise.all([
+    getIdeasForUser(user.id),
+    listTags(user.id),
+  ]);
   const clientIdeas: ClientIdea[] = ideas.map((i) => ({
     id: i.id,
     title: i.title,
     contentJson: parseContent(i.contentJson),
+    tags: i.tags,
   }));
 
   return (
@@ -37,7 +42,7 @@ export default async function IdeasPage() {
         </div>
       </header>
 
-      <IdeasClient ideas={clientIdeas} />
+      <IdeasClient ideas={clientIdeas} allTags={allTags} />
     </main>
   );
 }

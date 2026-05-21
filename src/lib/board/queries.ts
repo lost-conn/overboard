@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { Lane } from "@/generated/prisma/enums";
 import type { Card, Project } from "@/generated/prisma/client";
 import { NotFoundError } from "@/lib/errors";
+import { joinToChips, type TagChip } from "@/lib/tags";
 import { compareProjects, scoreProject } from "./sorting";
 
 export const LANES = [Lane.BACKLOG, Lane.TODO, Lane.DOING, Lane.DONE] as const;
@@ -14,8 +15,10 @@ export const LANE_LABELS: Record<Lane, string> = {
   [Lane.DONE]: "Done",
 };
 
+export type CardWithTags = Card & { tags: TagChip[] };
+
 export type ProjectRow = Project & {
-  lanes: Record<Lane, Card[]>;
+  lanes: Record<Lane, CardWithTags[]>;
 };
 
 export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
@@ -24,23 +27,29 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
     include: {
       cards: {
         orderBy: { order: "asc" },
+        include: { tags: { include: { tag: true } } },
       },
     },
   });
 
   const now = new Date();
   const ranked = projects.map((p) => {
-    const lanes: Record<Lane, Card[]> = {
+    const lanes: Record<Lane, CardWithTags[]> = {
       [Lane.BACKLOG]: [],
       [Lane.TODO]: [],
       [Lane.DOING]: [],
       [Lane.DONE]: [],
     };
-    for (const card of p.cards) {
-      lanes[card.lane].push(card);
+    const scoreCards: Card[] = [];
+    for (const c of p.cards) {
+      const { tags, ...rest } = c;
+      const withTags: CardWithTags = { ...rest, tags: joinToChips(tags) };
+      lanes[c.lane].push(withTags);
+      scoreCards.push(rest);
     }
-    const { cards, ...rest } = p;
-    const score = scoreProject(cards, now);
+    const { cards: _cards, ...rest } = p;
+    void _cards; // discarded in favor of per-lane bins built above
+    const score = scoreProject(scoreCards, now);
     const row: ProjectRow = { ...rest, lanes };
     return { row, score };
   });
@@ -82,17 +91,21 @@ export async function listProjects(
 export type CardSummary = Pick<
   Card,
   "id" | "projectId" | "lane" | "order" | "title" | "createdAt" | "updatedAt"
->;
+> & { tags: TagChip[] };
 
 export async function listCards(
   userId: string,
-  opts: { projectId?: string; lane?: Lane } = {},
+  opts: { projectId?: string; lane?: Lane; tags?: string[] } = {},
 ): Promise<CardSummary[]> {
-  return db.card.findMany({
+  const tagFilter = normalizeTagFilter(opts.tags);
+  const rows = await db.card.findMany({
     where: {
       project: { userId },
       ...(opts.projectId ? { projectId: opts.projectId } : {}),
       ...(opts.lane ? { lane: opts.lane } : {}),
+      ...(tagFilter.length > 0
+        ? { tags: { some: { tag: { userId, name: { in: tagFilter } } } } }
+        : {}),
     },
     orderBy: [{ projectId: "asc" }, { lane: "asc" }, { order: "asc" }],
     select: {
@@ -103,14 +116,28 @@ export async function listCards(
       title: true,
       createdAt: true,
       updatedAt: true,
+      tags: { include: { tag: true } },
     },
   });
+  return rows.map(({ tags, ...rest }) => ({ ...rest, tags: joinToChips(tags) }));
 }
 
-export async function getCard(userId: string, cardId: string): Promise<Card> {
+export async function getCard(userId: string, cardId: string): Promise<CardWithTags> {
   const card = await db.card.findFirst({
     where: { id: cardId, project: { userId } },
+    include: { tags: { include: { tag: true } } },
   });
   if (!card) throw new NotFoundError("card not found");
-  return card;
+  const { tags, ...rest } = card;
+  return { ...rest, tags: joinToChips(tags) };
+}
+
+function normalizeTagFilter(tags: string[] | undefined): string[] {
+  if (!tags || tags.length === 0) return [];
+  const out = new Set<string>();
+  for (const raw of tags) {
+    const n = raw.trim().toLowerCase();
+    if (n.length > 0) out.add(n);
+  }
+  return [...out];
 }

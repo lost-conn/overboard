@@ -7,6 +7,8 @@ import * as boardQ from "@/lib/board/queries";
 import * as boardM from "@/lib/board/mutations";
 import * as ideasQ from "@/lib/ideas/queries";
 import * as ideasM from "@/lib/ideas/mutations";
+import * as tagsQ from "@/lib/tags/queries";
+import * as tagsM from "@/lib/tags/mutations";
 import { markdownToTipTapJson, tipTapJsonToMarkdown } from "./content";
 
 export type JsonSchema = Record<string, unknown>;
@@ -76,6 +78,22 @@ function requireLane(rec: Record<string, unknown>, key: string): Lane {
     throw new ValidationError(`${key} must be one of ${LANE_VALUES.join(", ")}`);
   }
   return v as Lane;
+}
+
+function optionalStringArray(rec: Record<string, unknown>, key: string): string[] | undefined {
+  const v = rec[key];
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v)) throw new ValidationError(`${key} must be an array of strings`);
+  for (const item of v) {
+    if (typeof item !== "string") throw new ValidationError(`${key} must be an array of strings`);
+  }
+  return v as string[];
+}
+
+function requireStringArray(rec: Record<string, unknown>, key: string): string[] {
+  const arr = optionalStringArray(rec, key);
+  if (arr === undefined) throw new ValidationError(`${key} is required`);
+  return arr;
 }
 
 function optionalLane(rec: Record<string, unknown>, key: string): Lane | undefined {
@@ -215,12 +233,17 @@ const deleteProject: Tool = {
 
 const listCards: Tool = {
   name: "list_cards",
-  description: "List cards across all projects (summaries only — no body). Filter by projectId and/or lane.",
+  description: "List cards across all projects (summaries only — no body). Filter by projectId, lane, and/or tags (any-match).",
   inputSchema: {
     type: "object",
     properties: {
       projectId: { type: "string" },
       lane: { type: "string", enum: LANE_VALUES },
+      tags: {
+        type: "array",
+        items: { type: "string" },
+        description: "Match cards having any of these tag names (OR).",
+      },
     },
     additionalProperties: false,
   },
@@ -228,7 +251,8 @@ const listCards: Tool = {
     const rec = asRecord(args);
     const projectId = optionalString(rec, "projectId");
     const lane = optionalLane(rec, "lane");
-    const cards = await boardQ.listCards(ctx.userId, { projectId, lane });
+    const tags = optionalStringArray(rec, "tags");
+    const cards = await boardQ.listCards(ctx.userId, { projectId, lane, tags });
     return { cards };
   },
 };
@@ -252,6 +276,7 @@ const getCard: Tool = {
       order: card.order,
       title: card.title,
       body: tipTapJsonToMarkdown(card.contentJson),
+      tags: card.tags,
       createdAt: card.createdAt,
       updatedAt: card.updatedAt,
     };
@@ -354,9 +379,23 @@ const deleteCard: Tool = {
 
 const listIdeas: Tool = {
   name: "list_ideas",
-  description: "List ideas in the user's idea pool (rough notes that haven't graduated to projects yet).",
-  inputSchema: EMPTY_OBJECT_SCHEMA,
-  handler: async (ctx) => ({ ideas: await ideasQ.listIdeas(ctx.userId) }),
+  description: "List ideas in the user's idea pool. Optional tags filter (any-match).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      tags: {
+        type: "array",
+        items: { type: "string" },
+        description: "Match ideas having any of these tag names (OR).",
+      },
+    },
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    const tags = optionalStringArray(rec, "tags");
+    return { ideas: await ideasQ.listIdeas(ctx.userId, { tags }) };
+  },
 };
 
 const createIdea: Tool = {
@@ -424,6 +463,51 @@ const deleteIdea: Tool = {
   },
 };
 
+const listTags: Tool = {
+  name: "list_tags",
+  description: "List the user's tags with their (possibly auto-derived) colors.",
+  inputSchema: EMPTY_OBJECT_SCHEMA,
+  handler: async (ctx) => ({ tags: await tagsQ.listTags(ctx.userId) }),
+};
+
+const setCardTags: Tool = {
+  name: "set_card_tags",
+  description: "Replace the tag set on a card. Pass an empty array to clear. New tag names are created on first use; names are lowercased and trimmed.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      cardId: { type: "string" },
+      tags: { type: "array", items: { type: "string" } },
+    },
+    required: ["cardId", "tags"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    await tagsM.setCardTags(ctx.userId, requireString(rec, "cardId"), requireStringArray(rec, "tags"));
+    return { ok: true };
+  },
+};
+
+const setIdeaTags: Tool = {
+  name: "set_idea_tags",
+  description: "Replace the tag set on an idea. Pass an empty array to clear. New tag names are created on first use; names are lowercased and trimmed.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      ideaId: { type: "string" },
+      tags: { type: "array", items: { type: "string" } },
+    },
+    required: ["ideaId", "tags"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    await tagsM.setIdeaTags(ctx.userId, requireString(rec, "ideaId"), requireStringArray(rec, "tags"));
+    return { ok: true };
+  },
+};
+
 const promoteIdea: Tool = {
   name: "promote_idea",
   description: "Convert an idea into a new project. If the idea has a body, it becomes a single Backlog card. The idea is deleted on success.",
@@ -458,6 +542,9 @@ export const TOOLS: Tool[] = [
   updateIdea,
   deleteIdea,
   promoteIdea,
+  listTags,
+  setCardTags,
+  setIdeaTags,
 ];
 
 export function findTool(name: string): Tool | undefined {

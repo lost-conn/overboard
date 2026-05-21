@@ -29,17 +29,29 @@ import {
   reorderIdeasAction,
   updateIdeaAction,
 } from "@/lib/actions/ideas";
+import { setIdeaTagsAction } from "@/lib/actions/tags";
 import { CardDrawer, type DrawerCard } from "./CardDrawer";
+import { TagChip, TagChipOverflow } from "./TagChip";
+import { TagFilterBar, useSelectedTagNames } from "./TagFilterBar";
 import { useBoardEvents } from "./useBoardEvents";
 import styles from "./IdeasClient.module.css";
+
+type ClientTag = { id: string; name: string; color: string };
 
 export type ClientIdea = {
   id: string;
   title: string;
   contentJson: Record<string, unknown> | null;
+  tags: ClientTag[];
 };
 
-export function IdeasClient({ ideas }: { ideas: ClientIdea[] }) {
+export function IdeasClient({
+  ideas,
+  allTags,
+}: {
+  ideas: ClientIdea[];
+  allTags: ClientTag[];
+}) {
   const router = useRouter();
   const [local, setLocal] = useState<ClientIdea[]>(ideas);
   const [drawerCard, setDrawerCard] = useState<DrawerCard | null>(null);
@@ -86,18 +98,28 @@ export function IdeasClient({ ideas }: { ideas: ClientIdea[] }) {
 
   const ids = useMemo(() => local.map((i) => i.id), [local]);
 
+  const selectedTagNames = useSelectedTagNames();
+  const filterActive = selectedTagNames.length > 0;
+  const displayIdeas = useMemo(() => {
+    if (!filterActive) return local;
+    const sel = new Set(selectedTagNames);
+    return local.filter((i) => i.tags.some((t) => sel.has(t.name)));
+  }, [filterActive, selectedTagNames, local]);
+
   const openIdea = (idea: ClientIdea) => {
     setDrawerCard({
       id: idea.id,
       crumbs: ["Idea pool"],
       title: idea.title,
       contentJson: idea.contentJson,
+      tags: idea.tags,
     });
   };
 
   const handleDragStart = (e: DragStartEvent) => setActiveId(String(e.active.id));
   const handleDragEnd = (e: DragEndEvent) => {
     setActiveId(null);
+    if (filterActive) return;
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     const oldIdx = local.findIndex((i) => i.id === active.id);
@@ -114,15 +136,20 @@ export function IdeasClient({ ideas }: { ideas: ClientIdea[] }) {
     <>
       <div className={styles.bodyWrap}>
         <div className={styles.body}>
+          <TagFilterBar allTags={allTags} />
           <div className={styles.toolbar}>
-            <NewIdeaButton open={adding} setOpen={setAdding} />
+            {filterActive ? null : <NewIdeaButton open={adding} setOpen={setAdding} />}
             <span className={styles.count}>
-              {local.length} {local.length === 1 ? "idea" : "ideas"}
+              {filterActive
+                ? `${displayIdeas.length} of ${local.length}`
+                : `${local.length} ${local.length === 1 ? "idea" : "ideas"}`}
             </span>
           </div>
 
           {local.length === 0 && !adding ? (
             <EmptyState />
+          ) : displayIdeas.length === 0 ? (
+            <div className={styles.filterEmpty}>No ideas match the selected tags.</div>
           ) : (
             <DndContext
               id="ideas"
@@ -134,8 +161,13 @@ export function IdeasClient({ ideas }: { ideas: ClientIdea[] }) {
             >
               <SortableContext items={ids} strategy={verticalListSortingStrategy}>
                 <ul className={styles.list}>
-                  {local.map((idea) => (
-                    <SortableIdea key={idea.id} idea={idea} onClick={() => openIdea(idea)} />
+                  {displayIdeas.map((idea) => (
+                    <SortableIdea
+                      key={idea.id}
+                      idea={idea}
+                      onClick={() => openIdea(idea)}
+                      dndDisabled={filterActive}
+                    />
                   ))}
                 </ul>
               </SortableContext>
@@ -149,9 +181,13 @@ export function IdeasClient({ ideas }: { ideas: ClientIdea[] }) {
 
       <CardDrawer
         card={drawerCard}
+        allTags={allTags}
         onClose={() => setDrawerCard(null)}
-        onSave={async ({ id, title, contentJson }) => {
+        onSave={async ({ id, title, contentJson, tags, tagsChanged }) => {
           await updateIdeaAction({ id, title, contentJson });
+          if (tagsChanged) {
+            await setIdeaTagsAction({ ideaId: id, tags });
+          }
         }}
         onDelete={async (id) => {
           await deleteIdeaAction(id);
@@ -243,8 +279,16 @@ function NewIdeaButton({ open, setOpen }: { open: boolean; setOpen: (v: boolean)
   );
 }
 
-function SortableIdea({ idea, onClick }: { idea: ClientIdea; onClick: () => void }) {
-  const sortable = useSortable({ id: idea.id });
+function SortableIdea({
+  idea,
+  onClick,
+  dndDisabled,
+}: {
+  idea: ClientIdea;
+  onClick: () => void;
+  dndDisabled: boolean;
+}) {
+  const sortable = useSortable({ id: idea.id, disabled: dndDisabled });
   const [isPending, startTransition] = useTransition();
 
   const style = {
@@ -281,8 +325,20 @@ function SortableIdea({ idea, onClick }: { idea: ClientIdea; onClick: () => void
         <GripVertical size={14} aria-hidden />
       </button>
       <button type="button" className={styles.itemMain} onClick={onClick} disabled={isPending}>
-        <span className={styles.itemTitle}>{idea.title}</span>
-        {idea.contentJson ? <span className={styles.itemDot} aria-hidden /> : null}
+        <span className={styles.itemHead}>
+          <span className={styles.itemTitle}>{idea.title}</span>
+          {idea.contentJson ? <span className={styles.itemDot} aria-hidden /> : null}
+        </span>
+        {idea.tags.length > 0 ? (
+          <span className={styles.itemTags}>
+            {idea.tags.slice(0, 3).map((t) => (
+              <TagChip key={t.id} tag={t} />
+            ))}
+            {idea.tags.length > 3 ? (
+              <TagChipOverflow count={idea.tags.length - 3} />
+            ) : null}
+          </span>
+        ) : null}
       </button>
       <div className={styles.itemActions}>
         <button
