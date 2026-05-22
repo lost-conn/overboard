@@ -23,7 +23,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronRight, Plus, Rows3, Rows4, X } from "lucide-react";
+import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus, Rows3, Rows4, X } from "lucide-react";
 import {
   createCardAction,
   deleteCardAction,
@@ -183,6 +183,22 @@ export function BoardClient({ projects, allTags }: Props) {
     });
   };
 
+  const allRowsCollapsed = useMemo(
+    () => displayProjects.length > 0 && displayProjects.every((p) => getViewState(p.id) === "collapsed"),
+    // getViewState depends on viewStates; reading displayProjects + viewStates is enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [displayProjects, viewStates],
+  );
+
+  const toggleAllRowsCollapsed = () => {
+    setViewStates((prev) => {
+      const next = { ...prev };
+      const target: ViewState = allRowsCollapsed ? "minimized" : "collapsed";
+      for (const p of displayProjects) next[p.id] = target;
+      return next;
+    });
+  };
+
   // Grid columns: project col + 4 lane cols. Collapsed lanes shrink to a thin strip.
   const gridTemplateColumns = useMemo(() => {
     const lanes = LANES.map((l) =>
@@ -307,7 +323,25 @@ export function BoardClient({ projects, allTags }: Props) {
       >
         <section className={styles.boardScroll}>
           <div className={styles.board} style={{ gridTemplateColumns }}>
-            <div className={styles.cornerCell} aria-hidden />
+            <div className={styles.cornerCell}>
+              <button
+                type="button"
+                className={styles.collapseAllBtn}
+                onClick={toggleAllRowsCollapsed}
+                aria-pressed={allRowsCollapsed}
+                title={allRowsCollapsed ? "Expand all rows" : "Collapse all rows"}
+                aria-label={allRowsCollapsed ? "Expand all rows" : "Collapse all rows"}
+              >
+                {allRowsCollapsed ? (
+                  <ChevronsUpDown size={12} aria-hidden />
+                ) : (
+                  <ChevronsDownUp size={12} aria-hidden />
+                )}
+                <span className={styles.collapseAllLabel}>
+                  {allRowsCollapsed ? "Expand all" : "Collapse all"}
+                </span>
+              </button>
+            </div>
             {LANES.map((lane) => {
               const isCollapsed = collapsedLanes.has(lane);
               return (

@@ -13,7 +13,43 @@
 }
 
 .cornerCell {
-  /* spacer above project name column */
+  display: flex;
+  align-items: center;
+  padding: 4px 4px 4px 0;
+}
+
+.collapseAllBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.collapseAllBtn:hover {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.collapseAllBtn[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.collapseAllLabel {
+  /* keeps label readable; can shrink later if needed */
 }
 
 .laneHeader {
@@ -409,6 +445,10 @@
 
   .cornerCell,
   .laneHeader {
+    display: none;
+  }
+
+  .collapseAllBtn {
     display: none;
   }
 
