@@ -148,6 +148,27 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: text;
+  border-bottom: 1px dashed transparent;
+}
+
+.projectCell:hover .projectName {
+  border-bottom-color: color-mix(in srgb, var(--text-dim) 50%, transparent);
+}
+
+.projectNameInput {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin: -2px -5px;
+  width: 100%;
+  outline: none;
 }
 
 .projectCount {

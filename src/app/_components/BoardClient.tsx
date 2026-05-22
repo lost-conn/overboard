@@ -29,6 +29,7 @@ import {
   deleteCardAction,
   deleteProjectAction,
   moveCardAction,
+  renameProjectAction,
   setProjectPriorityAction,
   updateCardAction,
 } from "@/lib/actions/board";
@@ -462,6 +463,17 @@ function ProjectRow({
     });
   };
 
+  const [renamingName, setRenamingName] = useState<string | null>(null);
+  const commitRename = () => {
+    if (renamingName === null) return;
+    const next = renamingName.trim();
+    setRenamingName(null);
+    if (!next || next === project.name) return;
+    startTransition(async () => {
+      await renameProjectAction({ id: project.id, name: next });
+    });
+  };
+
   const isRowCollapsed = viewState === "collapsed";
 
   return (
@@ -484,7 +496,35 @@ function ProjectRow({
           title="Lower = higher in list. Algorithm sorts within the same priority."
         />
         <div className={styles.projectInfo}>
-          <span className={styles.projectName}>{project.name}</span>
+          {renamingName !== null ? (
+            <input
+              type="text"
+              className={styles.projectNameInput}
+              autoFocus
+              value={renamingName}
+              maxLength={120}
+              aria-label={`Rename project ${project.name}`}
+              onChange={(e) => setRenamingName(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setRenamingName(null);
+                }
+              }}
+            />
+          ) : (
+            <span
+              className={styles.projectName}
+              onDoubleClick={() => setRenamingName(project.name)}
+              title="Double-click to rename"
+            >
+              {project.name}
+            </span>
+          )}
           {!isRowCollapsed && <span className={styles.projectCount}>{cardCount}</span>}
         </div>
         <ViewStateToggle value={viewState} onChange={onViewStateChange} />
