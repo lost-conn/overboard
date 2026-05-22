@@ -19,6 +19,18 @@ export default async function Home() {
   ]);
   const clientProjects = projects.map(toClientProject);
 
+  // Filter bar only shows tags actually in use on this view (the board).
+  // Tags that exist on ideas but not cards are hidden here — they still appear
+  // on /ideas. allTags is still passed in full so the per-card picker can pull
+  // from any of the user's tags.
+  const usedNames = new Set<string>();
+  for (const p of clientProjects) {
+    for (const lane of ["BACKLOG", "TODO", "DOING", "DONE"] as const) {
+      for (const c of p.lanes[lane]) for (const t of c.tags) usedNames.add(t.name);
+    }
+  }
+  const filterTags = allTags.filter((t) => usedNames.has(t.name));
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -45,7 +57,7 @@ export default async function Home() {
       {clientProjects.length === 0 ? (
         <EmptyState />
       ) : (
-        <BoardClient projects={clientProjects} allTags={allTags} />
+        <BoardClient projects={clientProjects} allTags={allTags} filterTags={filterTags} />
       )}
     </main>
   );

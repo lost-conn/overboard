@@ -23,6 +23,12 @@ export default async function IdeasPage() {
     tags: i.tags,
   }));
 
+  // Filter bar only shows tags actually in use on ideas; allTags stays full
+  // for the per-idea tag picker.
+  const usedNames = new Set<string>();
+  for (const i of clientIdeas) for (const t of i.tags) usedNames.add(t.name);
+  const filterTags = allTags.filter((t) => usedNames.has(t.name));
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -42,7 +48,7 @@ export default async function IdeasPage() {
         </div>
       </header>
 
-      <IdeasClient ideas={clientIdeas} allTags={allTags} />
+      <IdeasClient ideas={clientIdeas} allTags={allTags} filterTags={filterTags} />
     </main>
   );
 }

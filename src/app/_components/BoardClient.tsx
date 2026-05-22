@@ -77,13 +77,13 @@ type DragData =
   | { type: "card"; cardId: string; projectId: string; lane: LaneKey }
   | { type: "lane"; projectId: string; lane: LaneKey };
 
-type Props = { projects: ClientProject[]; allTags: ClientTag[] };
+type Props = { projects: ClientProject[]; allTags: ClientTag[]; filterTags: ClientTag[] };
 
 function laneDroppableId(projectId: string, lane: LaneKey): string {
   return `lane:${projectId}:${lane}`;
 }
 
-export function BoardClient({ projects, allTags }: Props) {
+export function BoardClient({ projects, allTags, filterTags }: Props) {
   const router = useRouter();
   const tagFilter = useTagFilter();
   const filterActive = tagFilterActive(tagFilter);
@@ -292,9 +292,9 @@ export function BoardClient({ projects, allTags }: Props) {
 
   return (
     <>
-      {allTags.length > 0 ? (
+      {filterTags.length > 0 ? (
         <div className={styles.filterBarSlot}>
-          <TagFilterBar allTags={allTags} />
+          <TagFilterBar allTags={filterTags} />
         </div>
       ) : null}
       <div className={styles.mobileLaneBar} role="group" aria-label="Toggle lanes">

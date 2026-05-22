@@ -53,9 +53,11 @@ export type ClientIdea = {
 export function IdeasClient({
   ideas,
   allTags,
+  filterTags,
 }: {
   ideas: ClientIdea[];
   allTags: ClientTag[];
+  filterTags: ClientTag[];
 }) {
   const router = useRouter();
   const [local, setLocal] = useState<ClientIdea[]>(ideas);
@@ -142,7 +144,7 @@ export function IdeasClient({
     <>
       <div className={styles.bodyWrap}>
         <div className={styles.body}>
-          <TagFilterBar allTags={allTags} />
+          <TagFilterBar allTags={filterTags} />
           <div className={styles.toolbar}>
             {filterActive ? null : <NewIdeaButton open={adding} setOpen={setAdding} />}
             <span className={styles.count}>
