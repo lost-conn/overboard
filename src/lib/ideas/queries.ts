@@ -22,14 +22,26 @@ export type IdeaSummary = Pick<
 
 export async function listIdeas(
   userId: string,
-  opts: { tags?: string[] } = {},
+  opts: { tagsAny?: string[]; tagsAll?: string[]; tagsNot?: string[] } = {},
 ): Promise<IdeaSummary[]> {
-  const tagFilter = normalizeTagFilter(opts.tags);
+  const any = normalizeTagFilter(opts.tagsAny);
+  const all = normalizeTagFilter(opts.tagsAll);
+  const not = normalizeTagFilter(opts.tagsNot);
   const rows = await db.idea.findMany({
     where: {
       userId,
-      ...(tagFilter.length > 0
-        ? { tags: { some: { tag: { userId, name: { in: tagFilter } } } } }
+      ...(any.length > 0
+        ? { tags: { some: { tag: { userId, name: { in: any } } } } }
+        : {}),
+      ...(all.length > 0
+        ? {
+            AND: all.map((name) => ({
+              tags: { some: { tag: { userId, name } } },
+            })),
+          }
+        : {}),
+      ...(not.length > 0
+        ? { tags: { none: { tag: { userId, name: { in: not } } } } }
         : {}),
     },
     orderBy: { order: "asc" },

@@ -27,3 +27,10 @@
   color: var(--text);
   border-color: var(--text-dim);
 }
+
+.hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-left: auto;
+  user-select: none;
+}

@@ -35,9 +35,28 @@ button.chip:hover {
   padding: 2px 8px;
 }
 
-.chipSelected {
+.chipAny {
   background: color-mix(in srgb, var(--chip-c, var(--text-dim)) 32%, transparent);
   border-color: color-mix(in srgb, var(--chip-c, var(--text-dim)) 60%, transparent);
+}
+
+.chipAll {
+  background: color-mix(in srgb, var(--chip-c, var(--text-dim)) 40%, transparent);
+  border-color: var(--chip-c, var(--text-dim));
+  font-weight: 700;
+}
+
+.chipNot {
+  color: var(--text-dim);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--chip-c, var(--text-dim)) 40%, transparent);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--chip-c, var(--text-dim)) 70%, transparent);
+}
+
+.glyph {
+  font-weight: 700;
+  opacity: 0.85;
 }
 
 .chipOverflow {

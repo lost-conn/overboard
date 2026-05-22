@@ -34,7 +34,12 @@ import {
 import { setCardTagsAction } from "@/lib/actions/tags";
 import { CardDrawer, type DrawerCard } from "./CardDrawer";
 import { TagChip, TagChipOverflow } from "./TagChip";
-import { TagFilterBar, useSelectedTagNames } from "./TagFilterBar";
+import {
+  TagFilterBar,
+  cardMatchesTagFilter,
+  tagFilterActive,
+  useTagFilter,
+} from "./TagFilterBar";
 import { useBoardEvents } from "./useBoardEvents";
 import styles from "./BoardClient.module.css";
 
@@ -79,8 +84,8 @@ function laneDroppableId(projectId: string, lane: LaneKey): string {
 
 export function BoardClient({ projects, allTags }: Props) {
   const router = useRouter();
-  const selectedTagNames = useSelectedTagNames();
-  const filterActive = selectedTagNames.length > 0;
+  const tagFilter = useTagFilter();
+  const filterActive = tagFilterActive(tagFilter);
   const [localProjects, setLocalProjects] = useState<ClientProject[]>(projects);
   const [drawerCard, setDrawerCard] = useState<DrawerCard | null>(null);
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null);
@@ -141,7 +146,6 @@ export function BoardClient({ projects, allTags }: Props) {
 
   const displayProjects = useMemo(() => {
     if (!filterActive) return localProjects;
-    const sel = new Set(selectedTagNames);
     return localProjects
       .map((p) => {
         const lanes: Record<LaneKey, ClientCard[]> = {
@@ -153,7 +157,7 @@ export function BoardClient({ projects, allTags }: Props) {
         let any = false;
         for (const lane of LANES) {
           const kept = p.lanes[lane].filter((c) =>
-            c.tags.some((t) => sel.has(t.name)),
+            cardMatchesTagFilter(c.tags.map((t) => t.name), tagFilter),
           );
           lanes[lane] = kept;
           if (kept.length > 0) any = true;
@@ -161,7 +165,7 @@ export function BoardClient({ projects, allTags }: Props) {
         return any ? { ...p, lanes } : null;
       })
       .filter((p): p is ClientProject => p !== null);
-  }, [filterActive, selectedTagNames, localProjects]);
+  }, [filterActive, tagFilter, localProjects]);
 
   const getViewState = (projectId: string): ViewState =>
     viewStates[projectId] ?? "minimized";

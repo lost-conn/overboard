@@ -32,7 +32,12 @@ import {
 import { setIdeaTagsAction } from "@/lib/actions/tags";
 import { CardDrawer, type DrawerCard } from "./CardDrawer";
 import { TagChip, TagChipOverflow } from "./TagChip";
-import { TagFilterBar, useSelectedTagNames } from "./TagFilterBar";
+import {
+  TagFilterBar,
+  cardMatchesTagFilter,
+  tagFilterActive,
+  useTagFilter,
+} from "./TagFilterBar";
 import { useBoardEvents } from "./useBoardEvents";
 import styles from "./IdeasClient.module.css";
 
@@ -98,13 +103,14 @@ export function IdeasClient({
 
   const ids = useMemo(() => local.map((i) => i.id), [local]);
 
-  const selectedTagNames = useSelectedTagNames();
-  const filterActive = selectedTagNames.length > 0;
+  const tagFilter = useTagFilter();
+  const filterActive = tagFilterActive(tagFilter);
   const displayIdeas = useMemo(() => {
     if (!filterActive) return local;
-    const sel = new Set(selectedTagNames);
-    return local.filter((i) => i.tags.some((t) => sel.has(t.name)));
-  }, [filterActive, selectedTagNames, local]);
+    return local.filter((i) =>
+      cardMatchesTagFilter(i.tags.map((t) => t.name), tagFilter),
+    );
+  }, [filterActive, tagFilter, local]);
 
   const openIdea = (idea: ClientIdea) => {
     setDrawerCard({

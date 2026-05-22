@@ -233,16 +233,27 @@ const deleteProject: Tool = {
 
 const listCards: Tool = {
   name: "list_cards",
-  description: "List cards across all projects (summaries only — no body). Filter by projectId, lane, and/or tags (any-match).",
+  description:
+    "List cards across all projects (summaries only — no body). Filter by projectId, lane, and/or tag sets: tagsAny (OR), tagsAll (AND), tagsNot (exclude).",
   inputSchema: {
     type: "object",
     properties: {
       projectId: { type: "string" },
       lane: { type: "string", enum: LANE_VALUES },
-      tags: {
+      tagsAny: {
         type: "array",
         items: { type: "string" },
         description: "Match cards having any of these tag names (OR).",
+      },
+      tagsAll: {
+        type: "array",
+        items: { type: "string" },
+        description: "Match cards having every one of these tag names (AND).",
+      },
+      tagsNot: {
+        type: "array",
+        items: { type: "string" },
+        description: "Exclude cards having any of these tag names.",
       },
     },
     additionalProperties: false,
@@ -251,8 +262,16 @@ const listCards: Tool = {
     const rec = asRecord(args);
     const projectId = optionalString(rec, "projectId");
     const lane = optionalLane(rec, "lane");
-    const tags = optionalStringArray(rec, "tags");
-    const cards = await boardQ.listCards(ctx.userId, { projectId, lane, tags });
+    const tagsAny = optionalStringArray(rec, "tagsAny");
+    const tagsAll = optionalStringArray(rec, "tagsAll");
+    const tagsNot = optionalStringArray(rec, "tagsNot");
+    const cards = await boardQ.listCards(ctx.userId, {
+      projectId,
+      lane,
+      tagsAny,
+      tagsAll,
+      tagsNot,
+    });
     return { cards };
   },
 };
@@ -379,22 +398,37 @@ const deleteCard: Tool = {
 
 const listIdeas: Tool = {
   name: "list_ideas",
-  description: "List ideas in the user's idea pool. Optional tags filter (any-match).",
+  description:
+    "List ideas in the user's idea pool. Filter by tag sets: tagsAny (OR), tagsAll (AND), tagsNot (exclude).",
   inputSchema: {
     type: "object",
     properties: {
-      tags: {
+      tagsAny: {
         type: "array",
         items: { type: "string" },
         description: "Match ideas having any of these tag names (OR).",
+      },
+      tagsAll: {
+        type: "array",
+        items: { type: "string" },
+        description: "Match ideas having every one of these tag names (AND).",
+      },
+      tagsNot: {
+        type: "array",
+        items: { type: "string" },
+        description: "Exclude ideas having any of these tag names.",
       },
     },
     additionalProperties: false,
   },
   handler: async (ctx, args) => {
     const rec = asRecord(args);
-    const tags = optionalStringArray(rec, "tags");
-    return { ideas: await ideasQ.listIdeas(ctx.userId, { tags }) };
+    const tagsAny = optionalStringArray(rec, "tagsAny");
+    const tagsAll = optionalStringArray(rec, "tagsAll");
+    const tagsNot = optionalStringArray(rec, "tagsNot");
+    return {
+      ideas: await ideasQ.listIdeas(ctx.userId, { tagsAny, tagsAll, tagsNot }),
+    };
   },
 };
 

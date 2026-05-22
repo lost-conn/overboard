@@ -95,16 +95,34 @@ export type CardSummary = Pick<
 
 export async function listCards(
   userId: string,
-  opts: { projectId?: string; lane?: Lane; tags?: string[] } = {},
+  opts: {
+    projectId?: string;
+    lane?: Lane;
+    tagsAny?: string[];
+    tagsAll?: string[];
+    tagsNot?: string[];
+  } = {},
 ): Promise<CardSummary[]> {
-  const tagFilter = normalizeTagFilter(opts.tags);
+  const any = normalizeTagFilter(opts.tagsAny);
+  const all = normalizeTagFilter(opts.tagsAll);
+  const not = normalizeTagFilter(opts.tagsNot);
   const rows = await db.card.findMany({
     where: {
       project: { userId },
       ...(opts.projectId ? { projectId: opts.projectId } : {}),
       ...(opts.lane ? { lane: opts.lane } : {}),
-      ...(tagFilter.length > 0
-        ? { tags: { some: { tag: { userId, name: { in: tagFilter } } } } }
+      ...(any.length > 0
+        ? { tags: { some: { tag: { userId, name: { in: any } } } } }
+        : {}),
+      ...(all.length > 0
+        ? {
+            AND: all.map((name) => ({
+              tags: { some: { tag: { userId, name } } },
+            })),
+          }
+        : {}),
+      ...(not.length > 0
+        ? { tags: { none: { tag: { userId, name: { in: not } } } } }
         : {}),
     },
     orderBy: [{ projectId: "asc" }, { lane: "asc" }, { order: "asc" }],
