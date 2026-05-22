@@ -137,6 +137,7 @@ export function CardDrawer({ card, allTags, onClose, onSave, onDelete }: Props) 
                 setTagNames(next);
                 setDirty(true);
               }}
+              onSubmit={handleSave}
             />
           </div>
 

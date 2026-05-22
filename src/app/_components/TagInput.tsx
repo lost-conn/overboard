@@ -11,6 +11,7 @@ type Props = {
   value: string[];
   suggestions: Suggestion[];
   onChange: (next: string[]) => void;
+  onSubmit?: () => void;
   placeholder?: string;
 };
 
@@ -24,7 +25,7 @@ function normalize(raw: string): string {
   return out.replace(/\s+/g, " ").trim();
 }
 
-export function TagInput({ value, suggestions, onChange, placeholder }: Props) {
+export function TagInput({ value, suggestions, onChange, onSubmit, placeholder }: Props) {
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const datalistId = useId();
@@ -70,7 +71,10 @@ export function TagInput({ value, suggestions, onChange, placeholder }: Props) {
         placeholder={value.length === 0 ? (placeholder ?? "Add tag…") : ""}
         maxLength={32}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === ",") {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+            e.preventDefault();
+            onSubmit?.();
+          } else if (e.key === "Enter" || e.key === ",") {
             e.preventDefault();
             commit(draft);
           } else if (e.key === "Backspace" && draft === "" && value.length > 0) {
