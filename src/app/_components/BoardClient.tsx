@@ -7,6 +7,7 @@ import {
   DragOverlay,
   PointerSensor,
   KeyboardSensor,
+  TouchSensor,
   useDroppable,
   useSensor,
   useSensors,
@@ -139,6 +140,7 @@ export function BoardClient({ projects, allTags }: Props) {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -279,6 +281,22 @@ export function BoardClient({ projects, allTags }: Props) {
           <TagFilterBar allTags={allTags} />
         </div>
       ) : null}
+      <div className={styles.mobileLaneBar} role="group" aria-label="Toggle lanes">
+        {LANES.map((lane) => {
+          const isCollapsed = collapsedLanes.has(lane);
+          return (
+            <button
+              key={lane}
+              type="button"
+              className={`${styles.mobileLaneBtn} ${isCollapsed ? styles.mobileLaneBtnCollapsed : ""}`}
+              onClick={() => toggleLaneCollapsed(lane)}
+              aria-pressed={isCollapsed}
+            >
+              {LANE_LABELS[lane]}
+            </button>
+          );
+        })}
+      </div>
       <DndContext
         id="board"
         sensors={sensors}
@@ -574,6 +592,9 @@ function LaneCell({
     <div ref={droppable.setNodeRef} className={cellClass}>
       {hideContent ? null : (
         <div className={styles.laneInner}>
+          <span className={styles.laneMobileLabel} aria-hidden>
+            {LANE_LABELS[lane]} · {cards.length}
+          </span>
           <SortableContext
             items={cards.map((c) => c.id)}
             strategy={verticalListSortingStrategy}

@@ -263,7 +263,9 @@
   border-radius: 5px;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03);
   cursor: pointer;
-  touch-action: manipulation;
+  /* Touch drag must override browser pan, or vertical drag fights vertical
+     scroll. Tap-to-click still synthesizes from touchend with no move. */
+  touch-action: none;
   transition:
     border-color 0.15s,
     box-shadow 0.15s,
@@ -382,4 +384,107 @@
   border-radius: var(--radius);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
   cursor: grabbing;
+}
+
+.laneMobileLabel {
+  display: none;
+}
+
+.mobileLaneBar {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .boardScroll {
+    padding: 12px 12px 24px;
+  }
+
+  /* Override the runtime grid-template-columns set inline by BoardClient.
+     Stack everything into one column; DOM order (project, then 4 lanes per
+     project) already produces the project-stacked layout. */
+  .board {
+    grid-template-columns: 1fr !important;
+    gap: 10px;
+  }
+
+  .cornerCell,
+  .laneHeader {
+    display: none;
+  }
+
+  .projectCell {
+    padding: 8px 10px;
+    min-height: 0;
+  }
+
+  .laneMobileLabel {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+  }
+
+  /* Done lane uses absolute positioning to share height with siblings in the
+     grid row. That logic doesn't apply when each lane is its own row. */
+  .laneCellDone .laneInner {
+    position: static;
+    overflow-y: visible;
+  }
+
+  /* Empty lanes don't need to take vertical space on mobile. */
+  .laneCell:has(.laneEmpty) {
+    min-height: 0;
+  }
+
+  .laneCellMinimized:not(.laneCellDone) .laneInner {
+    max-height: 240px;
+  }
+
+  /* Row/column collapses persisted from desktop would leave dead lane strips
+     between projects on mobile. Hide them entirely — the collapse intent is
+     still preserved in state for when desktop layout returns. */
+  .laneCellRowCollapsed,
+  .laneCellColCollapsed {
+    display: none;
+  }
+
+  .filterBarSlot {
+    padding: 10px 12px 0;
+  }
+
+  .mobileLaneBar {
+    display: flex;
+    gap: 6px;
+    padding: 10px 12px 0;
+  }
+
+  .mobileLaneBtn {
+    flex: 1;
+    padding: 6px 4px;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+  }
+
+  .mobileLaneBtnCollapsed {
+    color: var(--text-dim);
+    background: transparent;
+    border-style: dashed;
+  }
 }
