@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { currentUser } from "@/lib/auth";
-import { setCardTags, setIdeaTags } from "@/lib/tags";
+import { renameTag, setCardTags, setIdeaTags } from "@/lib/tags";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 
 async function requireUserId(): Promise<string> {
@@ -40,4 +40,22 @@ export async function setIdeaTagsAction(args: {
     swallowUserErrors(err);
   }
   revalidatePath("/ideas");
+}
+
+export async function renameTagAction(args: {
+  tagId: string;
+  name: string;
+}): Promise<{ ok: boolean; merged?: boolean }> {
+  const userId = await requireUserId();
+  try {
+    const result = await renameTag(userId, args.tagId, args.name);
+    revalidatePath("/");
+    revalidatePath("/ideas");
+    return { ok: true, merged: result.merged };
+  } catch (err) {
+    if (err instanceof NotFoundError || err instanceof ValidationError) {
+      return { ok: false };
+    }
+    throw err;
+  }
 }

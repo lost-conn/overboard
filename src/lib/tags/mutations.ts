@@ -64,6 +64,83 @@ async function upsertTags(
   return tags;
 }
 
+export type RenameTagResult = {
+  id: string;
+  name: string;
+  merged: boolean;
+};
+
+export async function renameTag(
+  userId: string,
+  tagId: string,
+  rawNewName: unknown,
+): Promise<RenameTagResult> {
+  if (typeof rawNewName !== "string") {
+    throw new ValidationError("new tag name must be a string");
+  }
+  const newName = normalizeName(rawNewName);
+  if (newName.length === 0) {
+    throw new ValidationError("tag name cannot be empty");
+  }
+  if (newName.length > MAX_NAME_LEN) {
+    throw new ValidationError(`tag exceeds ${MAX_NAME_LEN} chars`);
+  }
+
+  const tag = await db.tag.findFirst({
+    where: { id: tagId, userId },
+    select: { id: true, name: true },
+  });
+  if (!tag) throw new NotFoundError("tag not found");
+  if (tag.name === newName) {
+    return { id: tag.id, name: tag.name, merged: false };
+  }
+
+  const existing = await db.tag.findFirst({
+    where: { userId, name: newName, NOT: { id: tagId } },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    await db.tag.update({ where: { id: tagId }, data: { name: newName } });
+    emitBoard(userId);
+    return { id: tagId, name: newName, merged: false };
+  }
+
+  // Merge: copy this tag's relations to the existing target, then delete this tag.
+  // Cascade on Tag delete removes the old (cardId/ideaId, tagId) rows automatically.
+  const cardLinks = await db.cardTag.findMany({
+    where: { tagId },
+    select: { cardId: true },
+  });
+  const ideaLinks = await db.ideaTag.findMany({
+    where: { tagId },
+    select: { ideaId: true },
+  });
+
+  const cardInserts = cardLinks.map((l) =>
+    db.cardTag.upsert({
+      where: { cardId_tagId: { cardId: l.cardId, tagId: existing.id } },
+      create: { cardId: l.cardId, tagId: existing.id },
+      update: {},
+    }),
+  );
+  const ideaInserts = ideaLinks.map((l) =>
+    db.ideaTag.upsert({
+      where: { ideaId_tagId: { ideaId: l.ideaId, tagId: existing.id } },
+      create: { ideaId: l.ideaId, tagId: existing.id },
+      update: {},
+    }),
+  );
+
+  await db.$transaction([
+    ...cardInserts,
+    ...ideaInserts,
+    db.tag.delete({ where: { id: tagId } }),
+  ]);
+  emitBoard(userId);
+  return { id: existing.id, name: newName, merged: true };
+}
+
 export async function setCardTags(
   userId: string,
   cardId: string,

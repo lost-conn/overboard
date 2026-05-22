@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Pencil } from "lucide-react";
+import { renameTagAction } from "@/lib/actions/tags";
 import { TagChip, type FilterMode } from "./TagChip";
 import styles from "./TagFilterBar.module.css";
 
@@ -62,6 +64,8 @@ export function TagFilterBar({ allTags }: { allTags: Tag[] }) {
   const router = useRouter();
   const params = useSearchParams();
   const filter = useTagFilter();
+  const [editing, setEditing] = useState(false);
+  const [, startRename] = useTransition();
 
   if (allTags.length === 0) return null;
 
@@ -98,36 +102,115 @@ export function TagFilterBar({ allTags }: { allTags: Tag[] }) {
     writeFilter({ any: new Set(), all: new Set(), not: new Set() });
   };
 
+  const submitRename = (tagId: string, oldName: string, raw: string) => {
+    const next = raw.trim();
+    if (!next || next === oldName) return;
+    // Rewrite the filter params to use the new name if the old one was active,
+    // so filters survive the rename even though the server-side revalidation
+    // returns fresh tag rows.
+    const sp = new URLSearchParams(params);
+    let touched = false;
+    for (const key of ["any", "all", "not"] as const) {
+      const vals = sp.getAll(key);
+      if (vals.includes(oldName)) {
+        sp.delete(key);
+        for (const v of vals) sp.append(key, v === oldName ? next : v);
+        touched = true;
+      }
+    }
+    if (touched) {
+      const qs = sp.toString();
+      router.replace(qs ? `?${qs}` : "?", { scroll: false });
+    }
+    startRename(async () => {
+      await renameTagAction({ tagId, name: next });
+    });
+  };
+
   return (
     <div className={styles.bar}>
-      <span className={styles.label}>Filter:</span>
-      {allTags.map((t) => (
-        <TagChip
-          key={t.id}
-          tag={t}
-          size="md"
-          mode={chipMode(t.name, filter)}
-          onClick={() => setMode(t.name, "any")}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            setMode(t.name, "all");
-          }}
-          onAuxClick={(e) => {
-            if (e.button !== 1) return;
-            e.preventDefault();
-            setMode(t.name, "not");
-          }}
-          title="Left: may include · Right: must include · Middle: exclude"
-        />
-      ))}
-      {tagFilterActive(filter) ? (
+      <span className={styles.label}>{editing ? "Rename:" : "Filter:"}</span>
+      {allTags.map((t) =>
+        editing ? (
+          <RenameInput
+            key={t.id}
+            initial={t.name}
+            color={t.color}
+            onSubmit={(next) => submitRename(t.id, t.name, next)}
+          />
+        ) : (
+          <TagChip
+            key={t.id}
+            tag={t}
+            size="md"
+            mode={chipMode(t.name, filter)}
+            onClick={() => setMode(t.name, "any")}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setMode(t.name, "all");
+            }}
+            onAuxClick={(e) => {
+              if (e.button !== 1) return;
+              e.preventDefault();
+              setMode(t.name, "not");
+            }}
+            title="Left: may · Right: must · Middle: exclude"
+          />
+        ),
+      )}
+      {!editing && tagFilterActive(filter) ? (
         <button type="button" className={styles.clear} onClick={clearAll}>
           Clear
         </button>
       ) : null}
+      <button
+        type="button"
+        className={`${styles.editToggle} ${editing ? styles.editToggleActive : ""}`}
+        onClick={() => setEditing((v) => !v)}
+        aria-pressed={editing}
+        title={editing ? "Done renaming" : "Rename tags"}
+      >
+        {editing ? "Done" : <Pencil size={11} aria-hidden />}
+      </button>
       <span className={styles.hint} aria-hidden>
-        L: may · R: must · M: exclude
+        {editing
+          ? "Enter or blur to save · Esc to cancel"
+          : "L: may · R: must · M: exclude"}
       </span>
     </div>
+  );
+}
+
+function RenameInput({
+  initial,
+  color,
+  onSubmit,
+}: {
+  initial: string;
+  color: string;
+  onSubmit: (next: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  return (
+    <input
+      type="text"
+      className={styles.renameInput}
+      style={{ ["--chip-c" as string]: color } as React.CSSProperties}
+      value={value}
+      maxLength={32}
+      aria-label={`Rename tag ${initial}`}
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.currentTarget as HTMLInputElement).blur();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setValue(initial);
+          (e.currentTarget as HTMLInputElement).blur();
+        }
+      }}
+      onBlur={() => onSubmit(value)}
+    />
   );
 }

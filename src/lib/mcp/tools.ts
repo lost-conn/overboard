@@ -504,6 +504,25 @@ const listTags: Tool = {
   handler: async (ctx) => ({ tags: await tagsQ.listTags(ctx.userId) }),
 };
 
+const renameTag: Tool = {
+  name: "rename_tag",
+  description:
+    "Rename a tag. The new name applies to every card and idea that uses it. If a tag with the new name already exists, the two are merged into the existing target (their relations are unioned, and the renamed tag is deleted).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      name: { type: "string", maxLength: 32 },
+    },
+    required: ["id", "name"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    return tagsM.renameTag(ctx.userId, requireString(rec, "id"), requireString(rec, "name", 32));
+  },
+};
+
 const setCardTags: Tool = {
   name: "set_card_tags",
   description: "Replace the tag set on a card. Pass an empty array to clear. New tag names are created on first use; names are lowercased and trimmed.",
@@ -577,6 +596,7 @@ export const TOOLS: Tool[] = [
   deleteIdea,
   promoteIdea,
   listTags,
+  renameTag,
   setCardTags,
   setIdeaTags,
 ];
