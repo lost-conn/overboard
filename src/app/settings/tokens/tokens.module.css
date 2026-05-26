@@ -101,13 +101,17 @@
 }
 
 .submit {
+  display: inline-block;
   padding: 9px 14px;
+  font: inherit;
   font-weight: 500;
+  font-size: 14px;
   color: var(--surface);
   background: var(--accent);
   border: 1px solid var(--accent);
   border-radius: var(--radius);
   cursor: pointer;
+  text-decoration: none;
 }
 
 .submit:hover {
@@ -174,6 +178,12 @@
 .revokedTag {
   font-size: 12px;
   color: var(--text-dim);
+}
+
+.backupHint {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
 }
 
 .usage {

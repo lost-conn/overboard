@@ -101,6 +101,16 @@ export default async function TokensPage() {
         )}
       </section>
 
+      <section className={styles.card}>
+        <div className={styles.cardTitle}>Data backup</div>
+        <p className={styles.backupHint}>
+          Download all projects, cards, ideas, and tags as a single JSON file.
+        </p>
+        <a className={styles.submit} href="/api/backup" download>
+          Download JSON backup
+        </a>
+      </section>
+
       <div className={styles.usage}>
         Use with: <code>claude mcp add overboard --transport http https://&lt;your-host&gt;/api/mcp --header &quot;Authorization: Bearer ob_pat_...&quot;</code>
       </div>
