@@ -432,6 +432,30 @@ const listIdeas: Tool = {
   },
 };
 
+const getIdea: Tool = {
+  name: "get_idea",
+  description: "Fetch a single idea with its full body. The body is returned as markdown-ish plain text.",
+  inputSchema: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    const idea = await ideasQ.getIdea(ctx.userId, requireString(rec, "id"));
+    return {
+      id: idea.id,
+      order: idea.order,
+      title: idea.title,
+      body: tipTapJsonToMarkdown(idea.contentJson),
+      tags: idea.tags,
+      createdAt: idea.createdAt,
+      updatedAt: idea.updatedAt,
+    };
+  },
+};
+
 const createIdea: Tool = {
   name: "create_idea",
   description: "Add an idea to the idea pool.",
@@ -591,6 +615,7 @@ export const TOOLS: Tool[] = [
   moveCard,
   deleteCard,
   listIdeas,
+  getIdea,
   createIdea,
   updateIdea,
   deleteIdea,
