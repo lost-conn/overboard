@@ -12,6 +12,8 @@ import {
   useSensor,
   useSensors,
   closestCorners,
+  pointerWithin,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -83,6 +85,21 @@ type Props = { projects: ClientProject[]; allTags: ClientTag[]; filterTags: Clie
 function laneDroppableId(projectId: string, lane: LaneKey): string {
   return `lane:${projectId}:${lane}`;
 }
+
+const kanbanCollision: CollisionDetection = (args) => {
+  const pointer = pointerWithin(args);
+  const lanehit = pointer.find(
+    (c) => (c.data?.droppableContainer?.data?.current as DragData | undefined)?.type === "lane",
+  );
+  if (lanehit) {
+    const cards = pointer.filter(
+      (c) => (c.data?.droppableContainer?.data?.current as DragData | undefined)?.type === "card",
+    );
+    if (cards.length) return cards;
+    return [lanehit];
+  }
+  return closestCorners(args);
+};
 
 export function BoardClient({ projects, allTags, filterTags }: Props) {
   const router = useRouter();
@@ -317,7 +334,7 @@ export function BoardClient({ projects, allTags, filterTags }: Props) {
       <DndContext
         id="board"
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={kanbanCollision}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onDragCancel={() => setActiveDrag(null)}
