@@ -4,6 +4,12 @@ import { Lane } from "@/generated/prisma/enums";
 import type { Card, Project } from "@/generated/prisma/client";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { publish } from "@/lib/events/bus";
+import {
+  requireProjectAccess,
+  requireCardAccess,
+  getProjectParticipants,
+  emitBoardForProject,
+} from "./access";
 
 function emitBoard(userId: string): void {
   publish(userId, { type: "board", at: new Date().toISOString() });
@@ -40,24 +46,25 @@ export async function setProjectPriority(
   userId: string,
   projectId: string,
   priority: number,
-): Promise<Project> {
+): Promise<void> {
   if (!Number.isInteger(priority)) {
     throw new ValidationError("priority must be an integer");
   }
   if (priority < PRIORITY_MIN || priority > PRIORITY_MAX) {
     throw new ValidationError(`priority must be between ${PRIORITY_MIN} and ${PRIORITY_MAX}`);
   }
-  const project = await db.project.findFirst({
-    where: { id: projectId, userId },
-    select: { id: true },
-  });
-  if (!project) throw new NotFoundError("project not found");
-  const updated = await db.project.update({
-    where: { id: project.id },
-    data: { priority },
-  });
-  emitBoard(userId);
-  return updated;
+
+  const access = await requireProjectAccess(userId, projectId);
+  if (access.isOwner) {
+    await db.project.update({ where: { id: projectId }, data: { priority } });
+  } else {
+    await db.projectShare.update({
+      where: { projectId_sharedWithUserId: { projectId, sharedWithUserId: userId } },
+      data: { priority },
+    });
+  }
+  // Only notify the calling user — priority is personal view preference
+  publish(userId, { type: "board", at: new Date().toISOString() });
 }
 
 export async function renameProject(
@@ -72,7 +79,7 @@ export async function renameProject(
   });
   if (!project) throw new NotFoundError("project not found");
   const updated = await db.project.update({ where: { id: project.id }, data: { name: clean } });
-  emitBoard(userId);
+  await emitBoardForProject(projectId);
   return updated;
 }
 
@@ -87,7 +94,7 @@ export async function setProjectArchived(
   });
   if (!project) throw new NotFoundError("project not found");
   const updated = await db.project.update({ where: { id: project.id }, data: { archived } });
-  emitBoard(userId);
+  await emitBoardForProject(projectId);
   return updated;
 }
 
@@ -97,8 +104,12 @@ export async function deleteProject(userId: string, projectId: string): Promise<
     select: { id: true },
   });
   if (!project) throw new NotFoundError("project not found");
+  const participants = await getProjectParticipants(projectId);
   await db.project.delete({ where: { id: project.id } });
-  emitBoard(userId);
+  const event = { type: "board" as const, at: new Date().toISOString() };
+  for (const uid of participants) {
+    publish(uid, event);
+  }
 }
 
 
@@ -114,21 +125,17 @@ export async function createCard(
 ): Promise<Card> {
   const lane = parseLane(args.lane);
   const title = trimTitle(args.title, 200);
-  const project = await db.project.findFirst({
-    where: { id: args.projectId, userId },
-    select: { id: true },
-  });
-  if (!project) throw new NotFoundError("project not found");
+  await requireProjectAccess(userId, args.projectId);
 
   const max = await db.card.findFirst({
-    where: { projectId: project.id, lane },
+    where: { projectId: args.projectId, lane },
     orderBy: { order: "desc" },
     select: { order: true },
   });
 
   const card = await db.card.create({
     data: {
-      projectId: project.id,
+      projectId: args.projectId,
       lane,
       order: (max?.order ?? -1) + 1,
       title,
@@ -136,7 +143,7 @@ export async function createCard(
       ...(args.contentMd !== undefined ? { contentMd: args.contentMd } : {}),
     },
   });
-  emitBoard(userId);
+  await emitBoardForProject(args.projectId);
   return card;
 }
 
@@ -151,32 +158,24 @@ export async function updateCard(
   },
 ): Promise<Card> {
   const title = trimTitle(args.title, 200);
-  const card = await db.card.findFirst({
-    where: { id: args.id, project: { userId } },
-    select: { id: true },
-  });
-  if (!card) throw new NotFoundError("card not found");
+  const access = await requireCardAccess(userId, args.id);
 
   const updated = await db.card.update({
-    where: { id: card.id },
+    where: { id: access.cardId },
     data: {
       title,
       ...(args.contentJson !== undefined ? { contentJson: args.contentJson } : {}),
       ...(args.contentMd !== undefined ? { contentMd: args.contentMd } : {}),
     },
   });
-  emitBoard(userId);
+  await emitBoardForProject(access.projectId);
   return updated;
 }
 
 export async function deleteCard(userId: string, cardId: string): Promise<void> {
-  const card = await db.card.findFirst({
-    where: { id: cardId, project: { userId } },
-    select: { id: true },
-  });
-  if (!card) throw new NotFoundError("card not found");
-  await db.card.delete({ where: { id: card.id } });
-  emitBoard(userId);
+  const access = await requireCardAccess(userId, cardId);
+  await db.card.delete({ where: { id: access.cardId } });
+  await emitBoardForProject(access.projectId);
 }
 
 export async function moveCard(
@@ -188,13 +187,15 @@ export async function moveCard(
     throw new ValidationError("toIndex must be a non-negative integer");
   }
 
+  const access = await requireCardAccess(userId, args.cardId);
   const card = await db.card.findFirst({
-    where: { id: args.cardId, project: { userId } },
+    where: { id: access.cardId },
     select: { id: true, lane: true, order: true, projectId: true },
   });
   if (!card) throw new NotFoundError("card not found");
 
   const sameLane = card.lane === toLane;
+  const autoAssign = toLane === Lane.DOING ? { assigneeId: userId } : {};
 
   await db.$transaction(async (tx) => {
     const source = await tx.card.findMany({
@@ -211,7 +212,7 @@ export async function moveCard(
         if (finalOrder[i].id === card.id) {
           await tx.card.update({
             where: { id: card.id },
-            data: { lane: toLane, order: i },
+            data: { lane: toLane, order: i, ...autoAssign },
           });
         } else {
           await tx.card.update({ where: { id: finalOrder[i].id }, data: { order: i } });
@@ -236,12 +237,12 @@ export async function moveCard(
       if (finalTarget[i].id === card.id) {
         await tx.card.update({
           where: { id: card.id },
-          data: { lane: toLane, order: i },
+          data: { lane: toLane, order: i, ...autoAssign },
         });
       } else {
         await tx.card.update({ where: { id: finalTarget[i].id }, data: { order: i } });
       }
     }
   });
-  emitBoard(userId);
+  await emitBoardForProject(card.projectId);
 }

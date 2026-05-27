@@ -10,12 +10,17 @@ import styles from "./CardDrawer.module.css";
 type EditorJSON = Record<string, unknown>;
 type Tag = { id: string; name: string; color: string };
 
+type Participant = { id: string; email: string };
+
 export type DrawerCard = {
   id: string;
   crumbs: string[];
   title: string;
   contentJson: EditorJSON | null;
   tags: Tag[];
+  assignee?: Participant | null;
+  isShared?: boolean;
+  participants?: Participant[];
 };
 
 type Props = {
@@ -30,9 +35,10 @@ type Props = {
     tagsChanged: boolean;
   }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onAssign?: (cardId: string, assigneeId: string | null) => Promise<void>;
 };
 
-export function CardDrawer({ card, allTags, onClose, onSave, onDelete }: Props) {
+export function CardDrawer({ card, allTags, onClose, onSave, onDelete, onAssign }: Props) {
   const open = card !== null;
   const [title, setTitle] = useState(card?.title ?? "");
   const [contentJson, setContentJson] = useState<EditorJSON | null>(card?.contentJson ?? null);
@@ -140,6 +146,27 @@ export function CardDrawer({ card, allTags, onClose, onSave, onDelete }: Props) 
               onSubmit={handleSave}
             />
           </div>
+
+          {card.isShared && card.participants && onAssign ? (
+            <div className={styles.assigneeSlot}>
+              <label className={styles.assigneeLabel}>Assigned to</label>
+              <select
+                className={styles.assigneeSelect}
+                value={card.assignee?.id ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value || null;
+                  onAssign(card.id, val);
+                }}
+              >
+                <option value="">Unassigned</option>
+                {card.participants.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
 
           <div className={styles.editorSlot}>
             <CardEditor

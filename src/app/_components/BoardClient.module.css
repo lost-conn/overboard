@@ -93,6 +93,7 @@
   min-height: 80px;
 }
 
+
 .projectCellCollapsed {
   min-height: 0;
   padding: 4px 8px 4px 4px;
@@ -441,6 +442,74 @@
   border-radius: var(--radius);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
   cursor: grabbing;
+}
+
+.ownerBadge {
+  font-size: 10px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.shareBtn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.projectCell:hover .shareBtn {
+  opacity: 1;
+}
+
+.shareBtn:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.pinBtn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.pinBtn:hover:not(:disabled) {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.pinBtnActive {
+  color: var(--accent);
+}
+
+.pinBtn:disabled {
+  opacity: 0.5;
+}
+
+.cardAssignee {
+  font-size: 10px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .laneMobileLabel {

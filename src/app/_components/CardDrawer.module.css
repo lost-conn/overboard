@@ -120,6 +120,35 @@
   margin: 0 20px 14px;
 }
 
+.assigneeSlot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 20px 10px;
+}
+
+.assigneeLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.assigneeSelect {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.assigneeSelect:focus {
+  border-color: var(--accent);
+}
+
 .editorSlot {
   flex: 1;
   padding: 0 20px;

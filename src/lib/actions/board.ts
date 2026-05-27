@@ -102,6 +102,7 @@ export async function setProjectPriorityAction(args: {
     swallowUserErrors(err);
   }
   revalidatePath("/");
+  revalidatePath("/shared");
 }
 
 export async function renameProjectAction(args: { id: string; name: string }): Promise<void> {

@@ -5,6 +5,7 @@ import { ValidationError } from "@/lib/errors";
 import { Lane } from "@/generated/prisma/enums";
 import * as boardQ from "@/lib/board/queries";
 import * as boardM from "@/lib/board/mutations";
+import * as sharing from "@/lib/board/sharing";
 import * as ideasQ from "@/lib/ideas/queries";
 import * as ideasM from "@/lib/ideas/mutations";
 import * as tagsQ from "@/lib/tags/queries";
@@ -296,6 +297,7 @@ const getCard: Tool = {
       title: card.title,
       body: tipTapJsonToMarkdown(card.contentJson),
       tags: card.tags,
+      assignee: card.assignee ?? null,
       createdAt: card.createdAt,
       updatedAt: card.updatedAt,
     };
@@ -600,6 +602,99 @@ const promoteIdea: Tool = {
   },
 };
 
+const shareProject: Tool = {
+  name: "share_project",
+  description: "Share a project with another user by email. Only the project owner can share.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: { type: "string" },
+      email: { type: "string", description: "Email of the user to share with. Must be an existing account." },
+    },
+    required: ["projectId", "email"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    return sharing.shareProject(ctx.userId, requireString(rec, "projectId"), requireString(rec, "email"));
+  },
+};
+
+const unshareProject: Tool = {
+  name: "unshare_project",
+  description: "Remove a user's access to a shared project. Only the owner can unshare.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: { type: "string" },
+      userId: { type: "string", description: "ID of the user to remove." },
+    },
+    required: ["projectId", "userId"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    await sharing.unshareProject(ctx.userId, requireString(rec, "projectId"), requireString(rec, "userId"));
+    return { ok: true };
+  },
+};
+
+const listProjectShares: Tool = {
+  name: "list_project_shares",
+  description: "List users a project is shared with. Only the owner can view shares.",
+  inputSchema: {
+    type: "object",
+    properties: { projectId: { type: "string" } },
+    required: ["projectId"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    const shares = await sharing.listSharesForProject(ctx.userId, requireString(rec, "projectId"));
+    return { shares };
+  },
+};
+
+const setPinnedToBoard: Tool = {
+  name: "set_pinned_to_board",
+  description: "Pin or unpin a shared project to/from your main board.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: { type: "string" },
+      pinned: { type: "boolean" },
+    },
+    required: ["projectId", "pinned"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    const pinned = optionalBool(rec, "pinned") ?? true;
+    await sharing.setPinnedToBoard(ctx.userId, requireString(rec, "projectId"), pinned);
+    return { ok: true };
+  },
+};
+
+const assignCard: Tool = {
+  name: "assign_card",
+  description: "Assign a card to a project participant, or clear assignment. Pass null to unassign.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      cardId: { type: "string" },
+      assigneeId: { type: ["string", "null"], description: "User ID to assign, or null to unassign." },
+    },
+    required: ["cardId", "assigneeId"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    const assigneeId = rec.assigneeId === null ? null : requireString(rec, "assigneeId");
+    await sharing.assignCard(ctx.userId, requireString(rec, "cardId"), assigneeId);
+    return { ok: true };
+  },
+};
+
 export const TOOLS: Tool[] = [
   whoami,
   listProjects,
@@ -624,6 +719,11 @@ export const TOOLS: Tool[] = [
   renameTag,
   setCardTags,
   setIdeaTags,
+  shareProject,
+  unshareProject,
+  listProjectShares,
+  setPinnedToBoard,
+  assignCard,
 ];
 
 export function findTool(name: string): Tool | undefined {

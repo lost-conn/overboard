@@ -15,25 +15,62 @@ export const LANE_LABELS: Record<Lane, string> = {
   [Lane.DONE]: "Done",
 };
 
-export type CardWithTags = Card & { tags: TagChip[] };
+export type CardWithTags = Card & {
+  tags: TagChip[];
+  assignee?: { id: string; email: string } | null;
+};
 
 export type ProjectRow = Project & {
   lanes: Record<Lane, CardWithTags[]>;
+  isShared: boolean;
+  isOwner: boolean;
+  ownerEmail?: string;
+  pinnedToBoard?: boolean;
 };
 
 export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
-  const projects = await db.project.findMany({
-    where: { userId, archived: false },
-    include: {
-      cards: {
-        orderBy: { order: "asc" },
-        include: { tags: { include: { tag: true } } },
+  const [ownedProjects, sharedLinks] = await Promise.all([
+    db.project.findMany({
+      where: { userId, archived: false },
+      include: {
+        cards: {
+          orderBy: { order: "asc" },
+          include: {
+            tags: { include: { tag: true } },
+            assignee: { select: { id: true, email: true } },
+          },
+        },
+        shares: { select: { id: true } },
       },
-    },
-  });
+    }),
+    db.projectShare.findMany({
+      where: { sharedWithUserId: userId, pinnedToBoard: true },
+      include: {
+        project: {
+          include: {
+            cards: {
+              orderBy: { order: "asc" },
+              include: {
+                tags: { include: { tag: true } },
+                assignee: { select: { id: true, email: true } },
+              },
+            },
+            user: { select: { email: true } },
+            shares: { select: { id: true } },
+          },
+        },
+      },
+    }),
+  ]);
 
-  const now = new Date();
-  const ranked = projects.map((p) => {
+  type RawProject = typeof ownedProjects[number];
+  type SharedLink = typeof sharedLinks[number];
+
+  function buildRow(
+    p: RawProject | SharedLink["project"],
+    isOwner: boolean,
+    opts?: { ownerEmail?: string; priorityOverride?: number; pinnedToBoard?: boolean },
+  ): { row: ProjectRow; score: number } {
     const lanes: Record<Lane, CardWithTags[]> = {
       [Lane.BACKLOG]: [],
       [Lane.TODO]: [],
@@ -42,17 +79,97 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
     };
     const scoreCards: Card[] = [];
     for (const c of p.cards) {
-      const { tags, ...rest } = c;
-      const withTags: CardWithTags = { ...rest, tags: joinToChips(tags) };
+      const { tags, assignee, ...rest } = c;
+      const withTags: CardWithTags = { ...rest, tags: joinToChips(tags), assignee };
       lanes[c.lane].push(withTags);
       scoreCards.push(rest);
     }
-    const { cards: _cards, ...rest } = p;
-    void _cards; // discarded in favor of per-lane bins built above
+    const { cards: _cards, shares, ...rest } = p;
+    void _cards;
     const score = scoreProject(scoreCards, now);
-    const row: ProjectRow = { ...rest, lanes };
+    const row: ProjectRow = {
+      ...rest,
+      ...(opts?.priorityOverride !== undefined ? { priority: opts.priorityOverride } : {}),
+      lanes,
+      isShared: shares.length > 0,
+      isOwner,
+      ...(opts?.ownerEmail ? { ownerEmail: opts.ownerEmail } : {}),
+      ...(opts?.pinnedToBoard !== undefined ? { pinnedToBoard: opts.pinnedToBoard } : {}),
+    };
     return { row, score };
+  }
+
+  const now = new Date();
+  const ranked = [
+    ...ownedProjects.map((p) => buildRow(p, true)),
+    ...sharedLinks
+      .filter((s) => !s.project.archived)
+      .map((s) => buildRow(s.project, false, {
+        ownerEmail: s.project.user.email,
+        priorityOverride: s.priority,
+      })),
+  ];
+
+  ranked.sort((a, b) =>
+    compareProjects(
+      { project: a.row, score: a.score },
+      { project: b.row, score: b.score },
+    ),
+  );
+  return ranked.map((r) => r.row);
+}
+
+export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
+  const sharedLinks = await db.projectShare.findMany({
+    where: { sharedWithUserId: userId },
+    include: {
+      project: {
+        include: {
+          cards: {
+            orderBy: { order: "asc" },
+            include: {
+              tags: { include: { tag: true } },
+              assignee: { select: { id: true, email: true } },
+            },
+          },
+          user: { select: { email: true } },
+          shares: { select: { id: true } },
+        },
+      },
+    },
   });
+
+  const now = new Date();
+  const ranked = sharedLinks
+    .filter((s) => !s.project.archived)
+    .map((s) => {
+      const p = s.project;
+      const lanes: Record<Lane, CardWithTags[]> = {
+        [Lane.BACKLOG]: [],
+        [Lane.TODO]: [],
+        [Lane.DOING]: [],
+        [Lane.DONE]: [],
+      };
+      const scoreCards: Card[] = [];
+      for (const c of p.cards) {
+        const { tags, assignee, ...rest } = c;
+        lanes[c.lane].push({ ...rest, tags: joinToChips(tags), assignee });
+        scoreCards.push(rest);
+      }
+      const { cards: _cards, shares, user, ...rest } = p;
+      void _cards;
+      const score = scoreProject(scoreCards, now);
+      const row: ProjectRow = {
+        ...rest,
+        priority: s.priority,
+        lanes,
+        isShared: shares.length > 0,
+        isOwner: false,
+        ownerEmail: user.email,
+        pinnedToBoard: s.pinnedToBoard,
+      };
+      return { row, score };
+    });
 
   ranked.sort((a, b) =>
     compareProjects(
@@ -66,26 +183,45 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
 export type ProjectSummary = Pick<
   Project,
   "id" | "name" | "priority" | "archived" | "createdAt" | "updatedAt"
->;
+> & { isOwner: boolean; ownerEmail?: string };
 
-// MCP consumers usually just want the list; ordering by (priority ASC, name ASC)
-// is good enough without paying the full board-fetch cost to compute scores.
 export async function listProjects(
   userId: string,
   opts: { includeArchived?: boolean } = {},
 ): Promise<ProjectSummary[]> {
-  return db.project.findMany({
-    where: { userId, ...(opts.includeArchived ? {} : { archived: false }) },
-    orderBy: [{ priority: "asc" }, { name: "asc" }],
-    select: {
-      id: true,
-      name: true,
-      priority: true,
-      archived: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  const archiveFilter = opts.includeArchived ? {} : { archived: false };
+  const [owned, sharedLinks] = await Promise.all([
+    db.project.findMany({
+      where: { userId, ...archiveFilter },
+      orderBy: [{ priority: "asc" }, { name: "asc" }],
+      select: {
+        id: true, name: true, priority: true, archived: true,
+        createdAt: true, updatedAt: true,
+      },
+    }),
+    db.projectShare.findMany({
+      where: { sharedWithUserId: userId },
+      include: {
+        project: {
+          select: {
+            id: true, name: true, priority: true, archived: true,
+            createdAt: true, updatedAt: true,
+            user: { select: { email: true } },
+          },
+        },
+      },
+    }),
+  ]);
+  const shared = sharedLinks
+    .filter((s) => opts.includeArchived || !s.project.archived)
+    .map((s) => {
+      const { user, ...proj } = s.project;
+      return { ...proj, isOwner: false, ownerEmail: user.email } as ProjectSummary;
+    });
+  return [
+    ...owned.map((p) => ({ ...p, isOwner: true }) as ProjectSummary),
+    ...shared,
+  ];
 }
 
 export type CardSummary = Pick<
@@ -108,21 +244,24 @@ export async function listCards(
   const not = normalizeTagFilter(opts.tagsNot);
   const rows = await db.card.findMany({
     where: {
-      project: { userId },
+      OR: [
+        { project: { userId } },
+        { project: { shares: { some: { sharedWithUserId: userId } } } },
+      ],
       ...(opts.projectId ? { projectId: opts.projectId } : {}),
       ...(opts.lane ? { lane: opts.lane } : {}),
       ...(any.length > 0
-        ? { tags: { some: { tag: { userId, name: { in: any } } } } }
+        ? { tags: { some: { tag: { name: { in: any } } } } }
         : {}),
       ...(all.length > 0
         ? {
             AND: all.map((name) => ({
-              tags: { some: { tag: { userId, name } } },
+              tags: { some: { tag: { name } } },
             })),
           }
         : {}),
       ...(not.length > 0
-        ? { tags: { none: { tag: { userId, name: { in: not } } } } }
+        ? { tags: { none: { tag: { name: { in: not } } } } }
         : {}),
     },
     orderBy: [{ projectId: "asc" }, { lane: "asc" }, { order: "asc" }],
@@ -142,12 +281,21 @@ export async function listCards(
 
 export async function getCard(userId: string, cardId: string): Promise<CardWithTags> {
   const card = await db.card.findFirst({
-    where: { id: cardId, project: { userId } },
-    include: { tags: { include: { tag: true } } },
+    where: {
+      id: cardId,
+      OR: [
+        { project: { userId } },
+        { project: { shares: { some: { sharedWithUserId: userId } } } },
+      ],
+    },
+    include: {
+      tags: { include: { tag: true } },
+      assignee: { select: { id: true, email: true } },
+    },
   });
   if (!card) throw new NotFoundError("card not found");
-  const { tags, ...rest } = card;
-  return { ...rest, tags: joinToChips(tags) };
+  const { tags, assignee, ...rest } = card;
+  return { ...rest, tags: joinToChips(tags), assignee };
 }
 
 function normalizeTagFilter(tags: string[] | undefined): string[] {

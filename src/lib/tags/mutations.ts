@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { ValidationError, NotFoundError } from "@/lib/errors";
 import { publish } from "@/lib/events/bus";
+import { requireCardAccess, emitBoardForProject } from "@/lib/board/access";
 
 const MAX_NAME_LEN = 32;
 const MAX_TAGS_PER_ITEM = 16;
@@ -147,24 +148,20 @@ export async function setCardTags(
   rawNames: unknown,
 ): Promise<void> {
   const names = normalizeNames(rawNames);
-  const card = await db.card.findFirst({
-    where: { id: cardId, project: { userId } },
-    select: { id: true },
-  });
-  if (!card) throw new NotFoundError("card not found");
+  const access = await requireCardAccess(userId, cardId);
 
-  const tags = await upsertTags(userId, names);
+  const tags = await upsertTags(access.ownerId, names);
   await db.$transaction([
-    db.cardTag.deleteMany({ where: { cardId: card.id } }),
+    db.cardTag.deleteMany({ where: { cardId: access.cardId } }),
     ...(tags.length > 0
       ? [
           db.cardTag.createMany({
-            data: tags.map((t) => ({ cardId: card.id, tagId: t.id })),
+            data: tags.map((t) => ({ cardId: access.cardId, tagId: t.id })),
           }),
         ]
       : []),
   ]);
-  emitBoard(userId);
+  await emitBoardForProject(access.projectId);
 }
 
 export async function setIdeaTags(

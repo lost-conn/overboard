@@ -25,7 +25,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus, Rows3, Rows4, X } from "lucide-react";
+import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, Plus, Rows3, Rows4, Share2, X } from "lucide-react";
 import {
   createCardAction,
   deleteCardAction,
@@ -36,7 +36,9 @@ import {
   updateCardAction,
 } from "@/lib/actions/board";
 import { setCardTagsAction } from "@/lib/actions/tags";
+import { assignCardAction, setPinnedToBoardAction } from "@/lib/actions/sharing";
 import { CardDrawer, type DrawerCard } from "./CardDrawer";
+import { ShareDialog } from "./ShareDialog";
 import { TagChip, TagChipOverflow } from "./TagChip";
 import {
   TagFilterBar,
@@ -67,6 +69,7 @@ export type ClientCard = {
   title: string;
   contentJson: Record<string, unknown> | null;
   tags: ClientTag[];
+  assignee?: { id: string; email: string } | null;
 };
 
 export type ClientProject = {
@@ -74,13 +77,27 @@ export type ClientProject = {
   name: string;
   priority: number;
   lanes: Record<LaneKey, ClientCard[]>;
+  isShared: boolean;
+  isOwner: boolean;
+  ownerId: string;
+  ownerEmail?: string;
+  pinnedToBoard?: boolean;
 };
 
 type DragData =
   | { type: "card"; cardId: string; projectId: string; lane: LaneKey }
   | { type: "lane"; projectId: string; lane: LaneKey };
 
-type Props = { projects: ClientProject[]; allTags: ClientTag[]; filterTags: ClientTag[] };
+type Participant = { id: string; email: string };
+
+type Props = {
+  projects: ClientProject[];
+  allTags: ClientTag[];
+  filterTags: ClientTag[];
+  tagsByOwner?: Record<string, ClientTag[]>;
+  currentUserId: string;
+  participantsByProject?: Record<string, Participant[]>;
+};
 
 function laneDroppableId(projectId: string, lane: LaneKey): string {
   return `lane:${projectId}:${lane}`;
@@ -101,13 +118,14 @@ const kanbanCollision: CollisionDetection = (args) => {
   return closestCorners(args);
 };
 
-export function BoardClient({ projects, allTags, filterTags }: Props) {
+export function BoardClient({ projects, allTags, filterTags, tagsByOwner, currentUserId, participantsByProject }: Props) {
   const router = useRouter();
   const tagFilter = useTagFilter();
   const filterActive = tagFilterActive(tagFilter);
   const [localProjects, setLocalProjects] = useState<ClientProject[]>(projects);
   const [drawerCard, setDrawerCard] = useState<DrawerCard | null>(null);
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null);
+  const [shareProjectId, setShareProjectId] = useState<string | null>(null);
   // viewStates is per-project; default is "minimized" (apply lazily via getViewState).
   const [viewStates, setViewStates] = useState<Record<string, ViewState>>({});
   const [collapsedLanes, setCollapsedLanes] = useState<Set<LaneKey>>(new Set());
@@ -232,6 +250,9 @@ export function BoardClient({ projects, allTags, filterTags }: Props) {
       title: card.title,
       contentJson: card.contentJson,
       tags: card.tags,
+      assignee: card.assignee ?? null,
+      isShared: project.isShared,
+      participants: project.isShared ? (participantsByProject?.[project.id] ?? []) : undefined,
     });
   };
 
@@ -392,6 +413,7 @@ export function BoardClient({ projects, allTags, filterTags }: Props) {
                   collapsedLanes={collapsedLanes}
                   onCardClick={openCard}
                   dndDisabled={filterActive}
+                  onShareClick={project.isOwner ? () => setShareProjectId(project.id) : undefined}
                 />
               ))
             )}
@@ -403,7 +425,7 @@ export function BoardClient({ projects, allTags, filterTags }: Props) {
 
       <CardDrawer
         card={drawerCard}
-        allTags={allTags}
+        allTags={drawerCard?.isShared ? resolveTagsForDrawer(drawerCard, localProjects, tagsByOwner, allTags) : allTags}
         onClose={() => setDrawerCard(null)}
         onSave={async ({ id, title, contentJson, tags, tagsChanged }) => {
           await updateCardAction({ id, title, contentJson });
@@ -414,6 +436,14 @@ export function BoardClient({ projects, allTags, filterTags }: Props) {
         onDelete={async (id) => {
           await deleteCardAction(id);
         }}
+        onAssign={drawerCard?.isShared ? async (cardId, assigneeId) => {
+          await assignCardAction({ cardId, assigneeId });
+        } : undefined}
+      />
+
+      <ShareDialog
+        projectId={shareProjectId}
+        onClose={() => setShareProjectId(null)}
       />
     </>
   );
@@ -432,6 +462,20 @@ function replaceLaneCards(
   return projects.map((p) =>
     p.id === projectId ? { ...p, lanes: { ...p.lanes, [lane]: cards } } : p,
   );
+}
+
+function resolveTagsForDrawer(
+  card: DrawerCard,
+  projects: ClientProject[],
+  tagsByOwner: Record<string, ClientTag[]> | undefined,
+  fallback: ClientTag[],
+): ClientTag[] {
+  if (!tagsByOwner) return fallback;
+  const proj = projects.find((p) =>
+    Object.values(p.lanes).some((lane) => lane.some((c) => c.id === card.id)),
+  );
+  if (!proj) return fallback;
+  return tagsByOwner[proj.ownerId] ?? fallback;
 }
 
 function renderDragOverlay(active: DragData | null, projects: ClientProject[]) {
@@ -453,6 +497,7 @@ function ProjectRow({
   collapsedLanes,
   onCardClick,
   dndDisabled,
+  onShareClick,
 }: {
   project: ClientProject;
   viewState: ViewState;
@@ -460,6 +505,7 @@ function ProjectRow({
   collapsedLanes: Set<LaneKey>;
   onCardClick: (project: ClientProject, card: ClientCard) => void;
   dndDisabled: boolean;
+  onShareClick?: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
   const cardCount = Object.values(project.lanes).reduce((n, cs) => n + cs.length, 0);
@@ -513,7 +559,7 @@ function ProjectRow({
           title="Lower = higher in list. Algorithm sorts within the same priority."
         />
         <div className={styles.projectInfo}>
-          {renamingName !== null ? (
+          {project.isOwner && renamingName !== null ? (
             <input
               type="text"
               className={styles.projectNameInput}
@@ -536,25 +582,60 @@ function ProjectRow({
           ) : (
             <span
               className={styles.projectName}
-              onDoubleClick={() => setRenamingName(project.name)}
-              title="Double-click to rename"
+              onDoubleClick={project.isOwner ? () => setRenamingName(project.name) : undefined}
+              title={project.isOwner ? "Double-click to rename" : undefined}
             >
               {project.name}
             </span>
           )}
+          {!project.isOwner && project.ownerEmail ? (
+            <span className={styles.ownerBadge}>{project.ownerEmail}</span>
+          ) : null}
           {!isRowCollapsed && <span className={styles.projectCount}>{cardCount}</span>}
         </div>
         <ViewStateToggle value={viewState} onChange={onViewStateChange} />
-        <button
-          type="button"
-          className={styles.projectDelete}
-          onClick={handleDeleteProject}
-          disabled={isPending}
-          aria-label={`Delete project ${project.name}`}
-          title="Delete project"
-        >
-          <X size={14} aria-hidden />
-        </button>
+        {onShareClick ? (
+          <button
+            type="button"
+            className={styles.shareBtn}
+            onClick={onShareClick}
+            title="Share project"
+            aria-label={`Share project ${project.name}`}
+          >
+            <Share2 size={14} aria-hidden />
+          </button>
+        ) : null}
+        {!project.isOwner && project.pinnedToBoard !== undefined ? (
+          <button
+            type="button"
+            className={`${styles.pinBtn} ${project.pinnedToBoard ? styles.pinBtnActive : ""}`}
+            onClick={() => {
+              startTransition(async () => {
+                await setPinnedToBoardAction({
+                  projectId: project.id,
+                  pinned: !project.pinnedToBoard,
+                });
+              });
+            }}
+            disabled={isPending}
+            title={project.pinnedToBoard ? "Unpin from board" : "Pin to board"}
+            aria-label={project.pinnedToBoard ? `Unpin ${project.name} from board` : `Pin ${project.name} to board`}
+          >
+            {project.pinnedToBoard ? <PinOff size={14} aria-hidden /> : <Pin size={14} aria-hidden />}
+          </button>
+        ) : null}
+        {project.isOwner ? (
+          <button
+            type="button"
+            className={styles.projectDelete}
+            onClick={handleDeleteProject}
+            disabled={isPending}
+            aria-label={`Delete project ${project.name}`}
+            title="Delete project"
+          >
+            <X size={14} aria-hidden />
+          </button>
+        ) : null}
       </div>
       {LANES.map((lane) => (
         <LaneCell
@@ -795,6 +876,9 @@ function SortableCardItem({
           ))}
           {overflow > 0 ? <TagChipOverflow count={overflow} /> : null}
         </span>
+      ) : null}
+      {card.assignee ? (
+        <span className={styles.cardAssignee}>{card.assignee.email.split("@")[0]}</span>
       ) : null}
     </button>
   );

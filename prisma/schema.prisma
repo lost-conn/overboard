@@ -1,5 +1,5 @@
 // Overboard Organizer schema
-// User accounts are fully isolated — every query must filter by userId.
+// User accounts are isolated by default. Projects can be shared via ProjectShare.
 
 generator client {
   provider = "prisma-client"
@@ -23,11 +23,13 @@ model User {
   passwordHash String
   createdAt    DateTime @default(now())
 
-  sessions Session[]
-  projects Project[]
-  ideas    Idea[]
-  tokens   Token[]
-  tags     Tag[]
+  sessions       Session[]
+  projects       Project[]
+  ideas          Idea[]
+  tokens         Token[]
+  tags           Tag[]
+  sharedProjects ProjectShare[] @relation("sharedProjects")
+  assignedCards  Card[]         @relation("assignedCards")
 }
 
 model Token {
@@ -64,8 +66,9 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  cards Card[]
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cards  Card[]
+  shares ProjectShare[]
 
   @@index([userId])
   @@index([userId, priority])
@@ -79,14 +82,17 @@ model Card {
   title       String
   contentJson String? // ProseMirror JSON from TipTap
   contentMd   String? // Markdown export
+  assigneeId  String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tags    CardTag[]
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee User?    @relation("assignedCards", fields: [assigneeId], references: [id], onDelete: SetNull)
+  tags     CardTag[]
 
   @@index([projectId])
   @@index([projectId, lane, order])
+  @@index([assigneeId])
 }
 
 model Idea {
@@ -141,4 +147,20 @@ model IdeaTag {
 
   @@id([ideaId, tagId])
   @@index([tagId])
+}
+
+model ProjectShare {
+  id               String   @id @default(cuid())
+  projectId        String
+  sharedWithUserId String
+  pinnedToBoard    Boolean  @default(false)
+  priority         Int      @default(1)
+  createdAt        DateTime @default(now())
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sharedWith User    @relation("sharedProjects", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, sharedWithUserId])
+  @@index([sharedWithUserId])
+  @@index([projectId])
 }
