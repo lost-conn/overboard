@@ -1,0 +1,11 @@
+[project]
+name = "overboard"
+
+[servers.app]
+dockerfile = "./Dockerfile"
+port = 3000
+health_check = { path = "/api/auth/session", interval = "10s", timeout = "5s" }
+volumes = [{ name = "data", mount = "/app/data" }]
+
+[routes]
+"/*" = { service = "server", name = "app" }

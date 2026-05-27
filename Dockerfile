@@ -66,4 +66,5 @@ RUN chmod +x docker-entrypoint.sh
 
 USER node
 EXPOSE 3000
+ENTRYPOINT []
 CMD ["./docker-entrypoint.sh"]
