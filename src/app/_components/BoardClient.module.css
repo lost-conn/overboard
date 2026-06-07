@@ -321,9 +321,9 @@
   border-radius: 5px;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03);
   cursor: pointer;
-  /* Touch drag must override browser pan, or vertical drag fights vertical
-     scroll. Tap-to-click still synthesizes from touchend with no move. */
-  touch-action: none;
+  /* Allow native vertical scroll to pass through; the TouchSensor long-press
+     (220ms) still initiates a drag without fighting the scroll gesture. */
+  touch-action: pan-y;
   transition:
     border-color 0.15s,
     box-shadow 0.15s,

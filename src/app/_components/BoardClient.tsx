@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
   KeyboardSensor,
   TouchSensor,
   useDroppable,
@@ -175,7 +175,10 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
   }, [busy, router]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    // MouseSensor (not PointerSensor) so touch is handled exclusively by
+    // TouchSensor's long-press delay. PointerSensor also captures touch and
+    // would start a drag after 5px of movement, stealing vertical scroll.
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
