@@ -1,4 +1,4 @@
-# Overboard Organizer
+# The Overboard
 
 A self-hosted kanban board for people whose side-projects backlog has
 its own scrollbar. Live instance: **<https://ob.lostconnection.dev>**.

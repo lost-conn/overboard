@@ -3,7 +3,7 @@ import { ServiceWorker } from "./_components/ServiceWorker";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Overboard Organizer",
+  title: "The Overboard",
   description: "Personal mega-kanban for tracking too many projects at once.",
 };
 

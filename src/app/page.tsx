@@ -64,7 +64,7 @@ export default async function Home() {
     <main className={styles.page}>
       <header className={styles.header}>
         <div className={styles.headerLeft}>
-          <h1 className={styles.title}>Overboard Organizer</h1>
+          <h1 className={styles.title}>The Overboard</h1>
           <span className={styles.email}>{user.email}</span>
         </div>
         <div className={styles.headerActions}>

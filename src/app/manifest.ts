@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Overboard Organizer",
-    short_name: "Overboard",
+    name: "The Overboard",
+    short_name: "The Overboard",
     description: "Personal mega-kanban for tracking too many projects at once.",
     start_url: "/",
     display: "standalone",

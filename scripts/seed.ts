@@ -8,7 +8,7 @@ const SAMPLE: Array<{
   cards: Array<{ lane: keyof typeof Lane; title: string }>;
 }> = [
   {
-    name: "Overboard Organizer",
+    name: "The Overboard",
     cards: [
       { lane: "DONE", title: "Auth + session shell" },
       { lane: "DOING", title: "Board read-only render" },
