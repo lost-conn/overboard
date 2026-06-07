@@ -351,6 +351,20 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
             </button>
           );
         })}
+        <button
+          type="button"
+          className={styles.mobileCollapseAllBtn}
+          onClick={toggleAllRowsCollapsed}
+          aria-pressed={allRowsCollapsed}
+          aria-label={allRowsCollapsed ? "Expand all rows" : "Collapse all rows"}
+          title={allRowsCollapsed ? "Expand all rows" : "Collapse all rows"}
+        >
+          {allRowsCollapsed ? (
+            <ChevronsUpDown size={14} aria-hidden />
+          ) : (
+            <ChevronsDownUp size={14} aria-hidden />
+          )}
+        </button>
       </div>
       <DndContext
         id="board"
