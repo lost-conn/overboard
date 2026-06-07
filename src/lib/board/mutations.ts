@@ -190,12 +190,21 @@ export async function moveCard(
   const access = await requireCardAccess(userId, args.cardId);
   const card = await db.card.findFirst({
     where: { id: access.cardId },
-    select: { id: true, lane: true, order: true, projectId: true },
+    select: {
+      id: true,
+      lane: true,
+      order: true,
+      projectId: true,
+      project: { select: { shares: { select: { id: true }, take: 1 } } },
+    },
   });
   if (!card) throw new NotFoundError("card not found");
 
   const sameLane = card.lane === toLane;
-  const autoAssign = toLane === Lane.DOING ? { assigneeId: userId } : {};
+  // Auto-assign to the mover only matters on shared projects; on solo projects
+  // there's no one to disambiguate, so don't stamp an assignee.
+  const isShared = card.project.shares.length > 0;
+  const autoAssign = isShared && toLane === Lane.DOING ? { assigneeId: userId } : {};
 
   await db.$transaction(async (tx) => {
     const source = await tx.card.findMany({
