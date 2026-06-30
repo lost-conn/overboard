@@ -35,8 +35,18 @@ if (migrate.status !== 0) {
 
 // 2. Hand off to the Next production server. It reads PORT from the env and defaults
 //    the hostname to 0.0.0.0, both of which the platform sets.
+//
+//    jkbase's runtime Node has no inspector module, which Next requires on startup;
+//    preload a shim that stubs it (via NODE_OPTIONS so any child node procs Next
+//    spawns inherit it). The shim is a no-op where the inspector exists.
+const path = require("node:path");
+const shim = path.join(__dirname, "jkbase-inspector-shim.cjs");
 const next = spawn(node, ["node_modules/next/dist/bin/next", "start"], {
   stdio: "inherit",
+  env: {
+    ...process.env,
+    NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require ${shim}`.trim(),
+  },
 });
 
 // Forward shutdown signals so Next drains cleanly (jkbase does a graceful hand-off).
