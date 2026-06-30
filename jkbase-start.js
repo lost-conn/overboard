@@ -11,10 +11,22 @@ const node = process.execPath;
 
 // 1. Apply pending migrations. better-sqlite3 / the volume at /app/data make this
 //    create-or-migrate the live DB file before any request lands.
+//
+//    Prisma 7 fetches its schema engine lazily over the network, but this VM is
+//    network-fenced. So we vendor the engine binary in the repo (prisma/engines/)
+//    and point Prisma straight at it — the same binary + env the build phase uses
+//    (see package.json `build`). The path is relative to cwd (/app at runtime).
 const migrate = spawnSync(
   node,
   ["node_modules/prisma/build/index.js", "migrate", "deploy"],
-  { stdio: "inherit" }
+  {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      PRISMA_SCHEMA_ENGINE_BINARY:
+        "prisma/engines/schema-engine-debian-openssl-3.0.x",
+    },
+  }
 );
 if (migrate.status !== 0) {
   console.error(`[jkbase-start] migrate deploy failed (exit ${migrate.status})`);

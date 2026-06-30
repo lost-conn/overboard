@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "PRISMA_SCHEMA_ENGINE_BINARY=prisma/engines/schema-engine-debian-openssl-3.0.x prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "seed": "tsx scripts/seed.ts",
