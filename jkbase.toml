@@ -1,0 +1,25 @@
+[project]
+name = "overboard"
+
+# Built server-side from source by jkbase's Node buildpack — no Dockerfile, no
+# toolchain on the laptop. The buildpack runs `npm ci` + `npm run build`, prunes
+# to production deps, and execs a single direct `node` command at launch.
+#
+# That single-command launch has no entrypoint hook, so migrations can't run as a
+# pre-start step the way they did under Docker. `jkbase-start.js` runs
+# `prisma migrate deploy` and then hands off to `next start`; `command` points at it
+# because the buildpack's auto-derived start (`next start`) isn't a bare-node argv.
+[servers.web]
+source = "."
+language = "node"
+port = 3000
+command = ["/usr/bin/node", "jkbase-start.js"]
+volumes = [{ name = "data", mount = "/app/data" }]
+
+[servers.web.health_check]
+path = "/login"
+interval = "10s"
+timeout = "5s"
+
+[routes]
+"/*" = { service = "server", name = "web" }
