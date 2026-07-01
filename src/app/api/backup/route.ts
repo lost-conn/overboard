@@ -33,6 +33,7 @@ export async function GET() {
   ]);
 
   const backup = {
+    version: 1,
     exportedAt: new Date().toISOString(),
     projects: projects.map(({ userId: _, cards, ...proj }) => ({
       ...proj,
