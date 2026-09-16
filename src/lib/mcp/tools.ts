@@ -11,6 +11,7 @@ import * as ideasM from "@/lib/ideas/mutations";
 import * as tagsQ from "@/lib/tags/queries";
 import * as tagsM from "@/lib/tags/mutations";
 import { markdownToTipTapJson, tipTapJsonToMarkdown } from "./content";
+import { parseRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -115,6 +116,34 @@ function optionalLane(rec: Record<string, unknown>, key: string): Lane | undefin
     throw new ValidationError(`${key} must be one of ${LANE_VALUES.join(", ")}`);
   }
   return v as Lane;
+}
+
+// undefined = omitted (leave unchanged); null = explicit clear. An object is
+// validated as a recurrence rule; a missing tz defaults to "UTC" so callers
+// that don't know the user's timezone can still create a rule.
+function optionalRecurrenceInput(
+  rec: Record<string, unknown>,
+  key: string,
+): RecurrenceRule | null | undefined {
+  const v = rec[key];
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  if (typeof v !== "object" || Array.isArray(v)) {
+    throw new ValidationError(`${key} must be an object or null`);
+  }
+  return parseRecurrence({ tz: "UTC", ...(v as Record<string, unknown>) });
+}
+
+// Stored recurrence JSON should always be valid (it's validated on write),
+// but if something ever gets in a bad state, degrade to null rather than
+// failing the whole tool call.
+function safeParseRecurrence(raw: string | null): RecurrenceRule | null {
+  if (!raw) return null;
+  try {
+    return parseRecurrence(raw);
+  } catch {
+    return null;
+  }
 }
 
 // ---- tool definitions ----------------------------------------------------
@@ -246,7 +275,7 @@ const deleteProject: Tool = {
 const listCards: Tool = {
   name: "list_cards",
   description:
-    "List cards across all projects (summaries only — no body — but includes dueAt and expires). Filter by projectId, lane, and/or tag sets: tagsAny (OR), tagsAll (AND), tagsNot (exclude).",
+    "List cards across all projects (summaries only — no body — but includes dueAt, expires, recurrence, and seriesId). Filter by projectId, lane, and/or tag sets: tagsAny (OR), tagsAll (AND), tagsNot (exclude).",
   inputSchema: {
     type: "object",
     properties: {
@@ -284,7 +313,9 @@ const listCards: Tool = {
       tagsAll,
       tagsNot,
     });
-    return { cards };
+    return {
+      cards: cards.map((c) => ({ ...c, recurrence: safeParseRecurrence(c.recurrence) })),
+    };
   },
 };
 
@@ -313,15 +344,33 @@ const getCard: Tool = {
       expires: card.expires,
       failedAt: card.failedAt ? card.failedAt.toISOString() : null,
       rescuedAt: card.rescuedAt ? card.rescuedAt.toISOString() : null,
+      recurrence: safeParseRecurrence(card.recurrence),
+      seriesId: card.seriesId,
       createdAt: card.createdAt,
       updatedAt: card.updatedAt,
     };
   },
 };
 
+const RECURRENCE_SCHEMA: JsonSchema = {
+  type: "object",
+  description:
+    "A repeat rule for this card. Shape: { freq: \"daily\"|\"weekly\"|\"monthly\", interval: integer >= 1, byWeekday?: number[] (0=Sun..6=Sat, weekly only), byMonthDay?: integer 1-31 (monthly only), anchor: \"schedule\"|\"completion\", tz: IANA timezone string }. anchor \"schedule\" computes the next occurrence from the fixed schedule (missed periods are skipped forward to the first one after now); anchor \"completion\" computes it as now + interval, preserving the card's previous due time-of-day. tz may be omitted, in which case it defaults to \"UTC\".",
+  properties: {
+    freq: { type: "string", enum: ["daily", "weekly", "monthly"] },
+    interval: { type: "integer", minimum: 1 },
+    byWeekday: { type: "array", items: { type: "integer", minimum: 0, maximum: 6 } },
+    byMonthDay: { type: "integer", minimum: 1, maximum: 31 },
+    anchor: { type: "string", enum: ["schedule", "completion"] },
+    tz: { type: "string", description: "IANA timezone, e.g. \"America/Chicago\". Defaults to \"UTC\" if omitted." },
+  },
+  required: ["freq", "interval", "anchor"],
+  additionalProperties: false,
+};
+
 const createCard: Tool = {
   name: "create_card",
-  description: "Create a card in a project lane (not FAILED — that's reserved for the sweep). Optional body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link). Optionally set a due date and whether it expires (an overdue expiring card moves to the Failed lane within a minute).",
+  description: "Create a card in a project lane (not FAILED — that's reserved for the sweep). Optional body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link). Optionally set a due date and whether it expires (an overdue expiring card moves to the Failed lane within a minute). Optionally set a recurrence rule: when a card with a recurrence enters Done (or Failed), a fresh copy is created in To do with its next due date.",
   inputSchema: {
     type: "object",
     properties: {
@@ -337,6 +386,7 @@ const createCard: Tool = {
         type: "boolean",
         description: "If true, the card moves to the Failed lane within a minute of its due date passing. Default false.",
       },
+      recurrence: RECURRENCE_SCHEMA,
     },
     required: ["projectId", "lane", "title"],
     additionalProperties: false,
@@ -346,6 +396,7 @@ const createCard: Tool = {
     const body = optionalString(rec, "body");
     const dueAt = optionalDate(rec, "dueAt");
     const expires = optionalBool(rec, "expires");
+    const recurrence = optionalRecurrenceInput(rec, "recurrence");
     return boardM.createCard(ctx.userId, {
       projectId: requireString(rec, "projectId"),
       lane: requireLane(rec, "lane"),
@@ -353,13 +404,14 @@ const createCard: Tool = {
       contentJson: body ? markdownToTipTapJson(body) : null,
       ...(dueAt !== undefined ? { dueAt } : {}),
       ...(expires !== undefined ? { expires } : {}),
+      ...(recurrence !== undefined ? { recurrence } : {}),
     });
   },
 };
 
 const updateCard: Tool = {
   name: "update_card",
-  description: "Update a card's title and/or body. Omit body to leave it unchanged. Pass body=\"\" to clear. Body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link). Omit dueAt/expires to leave them unchanged; pass dueAt=null to clear the due date. Can't move a card to/from the Failed lane this way.",
+  description: "Update a card's title and/or body. Omit body to leave it unchanged. Pass body=\"\" to clear. Body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link). Omit dueAt/expires to leave them unchanged; pass dueAt=null to clear the due date. Omit recurrence to leave it unchanged; pass recurrence=null to clear it. Can't move a card to/from the Failed lane this way.",
   inputSchema: {
     type: "object",
     properties: {
@@ -374,6 +426,11 @@ const updateCard: Tool = {
         type: "boolean",
         description: "If true, the card moves to the Failed lane within a minute of its due date passing. Omit to leave unchanged.",
       },
+      recurrence: {
+        ...RECURRENCE_SCHEMA,
+        type: ["object", "null"],
+        description: `${RECURRENCE_SCHEMA.description} Pass null to clear the recurrence. Omit to leave unchanged.`,
+      },
     },
     required: ["id", "title"],
     additionalProperties: false,
@@ -383,6 +440,7 @@ const updateCard: Tool = {
     const body = optionalString(rec, "body");
     const dueAt = optionalDate(rec, "dueAt");
     const expires = optionalBool(rec, "expires");
+    const recurrence = optionalRecurrenceInput(rec, "recurrence");
     return boardM.updateCard(ctx.userId, {
       id: requireString(rec, "id"),
       title: requireString(rec, "title", 200),
@@ -393,6 +451,7 @@ const updateCard: Tool = {
           : { contentJson: markdownToTipTapJson(body) }),
       ...(dueAt !== undefined ? { dueAt } : {}),
       ...(expires !== undefined ? { expires } : {}),
+      ...(recurrence !== undefined ? { recurrence } : {}),
     });
   },
 };

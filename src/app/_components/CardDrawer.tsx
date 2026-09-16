@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { CardEditor } from "./Editor";
 import { TagInput } from "./TagInput";
+import type { RecurrenceFreq, RecurrenceAnchor, RecurrenceRule } from "@/lib/board/recurrence";
 import styles from "./CardDrawer.module.css";
 
 type EditorJSON = Record<string, unknown>;
@@ -27,6 +28,7 @@ export type DrawerCard = {
   lane?: string;
   failedAt?: string | null;
   rescuedAt?: string | null;
+  recurrence?: RecurrenceRule | null;
 };
 
 type Props = {
@@ -41,6 +43,7 @@ type Props = {
     tagsChanged: boolean;
     dueAt: string | null;
     expires: boolean;
+    recurrence: RecurrenceRule | null;
   }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onAssign?: (cardId: string, assigneeId: string | null) => Promise<void>;
@@ -50,6 +53,19 @@ type Props = {
   // reuses this drawer without them. Defaults to true.
   showDue?: boolean;
 };
+
+const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+
+function defaultRuleFor(freq: RecurrenceFreq): RecurrenceRule {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (freq === "weekly") {
+    return { freq, interval: 1, byWeekday: [new Date().getDay()], anchor: "schedule", tz };
+  }
+  if (freq === "monthly") {
+    return { freq, interval: 1, byMonthDay: new Date().getDate(), anchor: "schedule", tz };
+  }
+  return { freq, interval: 1, anchor: "schedule", tz };
+}
 
 // datetime-local inputs work in local wall-clock time with no timezone info;
 // convert to/from an ISO instant using the browser's own timezone.
@@ -84,6 +100,7 @@ export function CardDrawer({
   const [tagNames, setTagNames] = useState<string[]>(card?.tags.map((t) => t.name) ?? []);
   const [dueAtLocal, setDueAtLocal] = useState<string>(isoToLocalInput(card?.dueAt ?? null));
   const [expires, setExpires] = useState<boolean>(card?.expires ?? false);
+  const [recurrence, setRecurrence] = useState<RecurrenceRule | null>(card?.recurrence ?? null);
   const [isPending, startTransition] = useTransition();
   const [dirty, setDirty] = useState(false);
 
@@ -94,6 +111,7 @@ export function CardDrawer({
       setTagNames(card.tags.map((t) => t.name));
       setDueAtLocal(isoToLocalInput(card.dueAt));
       setExpires(card.expires);
+      setRecurrence(card.recurrence ?? null);
       setDirty(false);
     }
   }, [card]);
@@ -109,6 +127,11 @@ export function CardDrawer({
     const id = card.id;
     const trimmed = title.trim();
     if (!trimmed) return;
+    // Stamp the current browser timezone at save time, so a rule edited on a
+    // different device/zone always carries the zone it was actually set in.
+    const finalRecurrence: RecurrenceRule | null = recurrence
+      ? { ...recurrence, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }
+      : null;
     startTransition(async () => {
       await onSave({
         id,
@@ -118,6 +141,7 @@ export function CardDrawer({
         tagsChanged,
         dueAt: localInputToIso(dueAtLocal),
         expires,
+        recurrence: finalRecurrence,
       });
       onClose();
     });
@@ -246,6 +270,140 @@ export function CardDrawer({
                 />
                 Expires (fails when overdue)
               </label>
+            </div>
+          ) : null}
+
+          {showDue ? (
+            <div className={styles.repeatSlot}>
+              <div className={styles.repeatRow}>
+                <label className={styles.repeatLabel} htmlFor="drawer-repeat-freq">
+                  Repeat
+                </label>
+                <select
+                  id="drawer-repeat-freq"
+                  className={styles.repeatSelect}
+                  value={recurrence?.freq ?? "none"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setRecurrence(val === "none" ? null : defaultRuleFor(val as RecurrenceFreq));
+                    setDirty(true);
+                  }}
+                >
+                  <option value="none">None</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+
+                {recurrence ? (
+                  <>
+                    <span className={styles.repeatUnitLabel}>every</span>
+                    <input
+                      type="number"
+                      min={1}
+                      className={styles.repeatIntervalInput}
+                      value={recurrence.interval}
+                      onChange={(e) => {
+                        const n = parseInt(e.target.value, 10);
+                        setRecurrence({
+                          ...recurrence,
+                          interval: Number.isInteger(n) && n >= 1 ? n : 1,
+                        });
+                        setDirty(true);
+                      }}
+                    />
+                    <span className={styles.repeatUnitLabel}>
+                      {recurrence.freq === "daily"
+                        ? "days"
+                        : recurrence.freq === "weekly"
+                          ? "weeks"
+                          : "months"}
+                    </span>
+                  </>
+                ) : null}
+              </div>
+
+              {recurrence && recurrence.anchor === "schedule" && recurrence.freq === "weekly" ? (
+                <div className={styles.repeatRow}>
+                  <div className={styles.weekdayToggleGroup} role="group" aria-label="Repeat on weekday">
+                    {WEEKDAY_LABELS.map((label, day) => {
+                      const active = (recurrence.byWeekday ?? []).includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          className={`${styles.weekdayToggleBtn} ${active ? styles.weekdayToggleBtnActive : ""}`}
+                          aria-pressed={active}
+                          onClick={() => {
+                            const current = recurrence.byWeekday ?? [];
+                            const next = active
+                              ? current.filter((d) => d !== day)
+                              : [...current, day].sort((a, b) => a - b);
+                            setRecurrence({
+                              ...recurrence,
+                              byWeekday: next.length > 0 ? next : [day],
+                            });
+                            setDirty(true);
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {recurrence && recurrence.anchor === "schedule" && recurrence.freq === "monthly" ? (
+                <div className={styles.repeatRow}>
+                  <label className={styles.repeatUnitLabel} htmlFor="drawer-repeat-monthday">
+                    on day
+                  </label>
+                  <input
+                    id="drawer-repeat-monthday"
+                    type="number"
+                    min={1}
+                    max={31}
+                    className={styles.monthDayInput}
+                    value={recurrence.byMonthDay ?? 1}
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value, 10);
+                      const clamped = Number.isInteger(n) ? Math.min(31, Math.max(1, n)) : 1;
+                      setRecurrence({ ...recurrence, byMonthDay: clamped });
+                      setDirty(true);
+                    }}
+                  />
+                </div>
+              ) : null}
+
+              {recurrence ? (
+                <div className={styles.repeatRow}>
+                  <label className={styles.repeatLabel} htmlFor="drawer-repeat-anchor">
+                    Next occurrence
+                  </label>
+                  <select
+                    id="drawer-repeat-anchor"
+                    className={styles.repeatAnchorSelect}
+                    value={recurrence.anchor}
+                    onChange={(e) => {
+                      setRecurrence({
+                        ...recurrence,
+                        anchor: e.target.value as RecurrenceAnchor,
+                      });
+                      setDirty(true);
+                    }}
+                  >
+                    <option value="schedule">on schedule</option>
+                    <option value="completion">after completion</option>
+                  </select>
+                </div>
+              ) : null}
+
+              {recurrence && !dueAtLocal ? (
+                <span className={styles.repeatHint}>
+                  Set a due date so the next occurrence can be scheduled
+                </span>
+              ) : null}
             </div>
           ) : null}
 

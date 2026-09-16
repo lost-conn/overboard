@@ -175,6 +175,115 @@
   white-space: nowrap;
 }
 
+.repeatSlot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 20px 10px;
+}
+
+.repeatRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.repeatLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.repeatSelect,
+.repeatAnchorSelect {
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.repeatSelect:focus,
+.repeatAnchorSelect:focus {
+  border-color: var(--accent);
+}
+
+.repeatIntervalInput {
+  width: 52px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.repeatIntervalInput:focus {
+  border-color: var(--accent);
+}
+
+.repeatUnitLabel {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.weekdayToggleGroup {
+  display: flex;
+  gap: 4px;
+}
+
+.weekdayToggleBtn {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.weekdayToggleBtn:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.weekdayToggleBtnActive {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: var(--accent);
+}
+
+.monthDayInput {
+  width: 60px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.monthDayInput:focus {
+  border-color: var(--accent);
+}
+
+.repeatHint {
+  font-size: 11px;
+  color: var(--warning);
+}
+
 .assigneeSlot {
   display: flex;
   align-items: center;

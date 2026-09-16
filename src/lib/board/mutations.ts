@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { Lane } from "@/generated/prisma/enums";
-import type { Card, Project } from "@/generated/prisma/client";
+import type { Card, Prisma, Project } from "@/generated/prisma/client";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { publish } from "@/lib/events/bus";
 import {
@@ -10,6 +10,7 @@ import {
   getProjectParticipants,
   emitBoardForProject,
 } from "./access";
+import { nextDueAt, parseRecurrence, type RecurrenceRule } from "./recurrence";
 
 function emitBoard(userId: string): void {
   publish(userId, { type: "board", at: new Date().toISOString() });
@@ -44,6 +45,102 @@ function validateExpires(raw: boolean | undefined): boolean | undefined {
   if (raw === undefined) return undefined;
   if (typeof raw !== "boolean") throw new ValidationError("expires must be a boolean");
   return raw;
+}
+
+// undefined = leave unchanged; null = explicitly clear the recurrence rule.
+// A RecurrenceRule object or a serialized JSON string are both accepted and
+// re-validated, then stored serialized.
+function validateRecurrence(
+  raw: RecurrenceRule | string | null | undefined,
+): string | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  return JSON.stringify(parseRecurrence(raw));
+}
+
+// Shared "max order in lane" lookup used by every mutation that appends a
+// card to the end of a lane.
+async function maxOrderInLane(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  lane: Lane,
+): Promise<number> {
+  const max = await tx.card.findFirst({
+    where: { projectId, lane },
+    orderBy: { order: "desc" },
+    select: { order: true },
+  });
+  return (max?.order ?? -1) + 1;
+}
+
+type SpawnableCard = {
+  id: string;
+  projectId: string;
+  recurrence: string | null;
+  dueAt: Date | null;
+  seriesId: string | null;
+  title: string;
+  contentJson: string | null;
+  contentMd: string | null;
+  expires: boolean;
+};
+
+/**
+ * When a recurring card enters DONE or FAILED, create its next occurrence
+ * back in TODO. No-op if the card has no recurrence rule. On a malformed
+ * rule, logs and skips rather than failing the whole move — a broken
+ * recurrence shouldn't block a card from being moved/swept/rescued.
+ */
+async function spawnNextOccurrence(
+  tx: Prisma.TransactionClient,
+  card: SpawnableCard,
+  now: Date,
+): Promise<void> {
+  if (!card.recurrence) return;
+
+  let rule: RecurrenceRule;
+  try {
+    rule = parseRecurrence(card.recurrence);
+  } catch (err) {
+    console.error(`spawnNextOccurrence: invalid recurrence on card ${card.id}`, err);
+    return;
+  }
+
+  let seriesId = card.seriesId;
+  if (!seriesId) {
+    seriesId = card.id;
+    await tx.card.update({ where: { id: card.id }, data: { seriesId } });
+  }
+
+  const due = nextDueAt(rule, card.dueAt, now);
+  const order = await maxOrderInLane(tx, card.projectId, Lane.TODO);
+
+  const clone = await tx.card.create({
+    data: {
+      projectId: card.projectId,
+      lane: Lane.TODO,
+      order,
+      title: card.title,
+      contentJson: card.contentJson,
+      contentMd: card.contentMd,
+      expires: card.expires,
+      recurrence: card.recurrence,
+      seriesId,
+      dueAt: due,
+      assigneeId: null,
+    },
+    select: { id: true },
+  });
+
+  const tags = await tx.cardTag.findMany({
+    where: { cardId: card.id },
+    select: { tagId: true },
+  });
+  if (tags.length > 0) {
+    await tx.cardTag.createMany({
+      data: tags.map((t) => ({ cardId: clone.id, tagId: t.tagId })),
+    });
+  }
 }
 
 export async function createProject(userId: string, name: string): Promise<Project> {
@@ -139,6 +236,7 @@ export async function createCard(
     contentMd?: string | null;
     dueAt?: Date | null;
     expires?: boolean;
+    recurrence?: RecurrenceRule | string | null;
   },
 ): Promise<Card> {
   const lane = parseLane(args.lane);
@@ -148,24 +246,22 @@ export async function createCard(
   const title = trimTitle(args.title, 200);
   const dueAt = validateDueAt(args.dueAt);
   const expires = validateExpires(args.expires);
+  const recurrence = validateRecurrence(args.recurrence);
   await requireProjectAccess(userId, args.projectId);
 
-  const max = await db.card.findFirst({
-    where: { projectId: args.projectId, lane },
-    orderBy: { order: "desc" },
-    select: { order: true },
-  });
+  const order = await maxOrderInLane(db, args.projectId, lane);
 
   const card = await db.card.create({
     data: {
       projectId: args.projectId,
       lane,
-      order: (max?.order ?? -1) + 1,
+      order,
       title,
       ...(args.contentJson !== undefined ? { contentJson: args.contentJson } : {}),
       ...(args.contentMd !== undefined ? { contentMd: args.contentMd } : {}),
       ...(dueAt !== undefined ? { dueAt } : {}),
       ...(expires !== undefined ? { expires } : {}),
+      ...(recurrence !== undefined ? { recurrence } : {}),
     },
   });
   await emitBoardForProject(args.projectId);
@@ -182,11 +278,13 @@ export async function updateCard(
     contentMd?: string | null;
     dueAt?: Date | null;
     expires?: boolean;
+    recurrence?: RecurrenceRule | string | null;
   },
 ): Promise<Card> {
   const title = trimTitle(args.title, 200);
   const dueAt = validateDueAt(args.dueAt);
   const expires = validateExpires(args.expires);
+  const recurrence = validateRecurrence(args.recurrence);
   const access = await requireCardAccess(userId, args.id);
 
   const updated = await db.card.update({
@@ -197,6 +295,9 @@ export async function updateCard(
       ...(args.contentMd !== undefined ? { contentMd: args.contentMd } : {}),
       ...(dueAt !== undefined ? { dueAt } : {}),
       ...(expires !== undefined ? { expires } : {}),
+      // seriesId is intentionally left alone here — it's assigned the first
+      // time this card spawns a next occurrence (see spawnNextOccurrence).
+      ...(recurrence !== undefined ? { recurrence } : {}),
     },
   });
   await emitBoardForProject(access.projectId);
@@ -227,6 +328,13 @@ export async function moveCard(
       order: true,
       projectId: true,
       project: { select: { shares: { select: { id: true }, take: 1 } } },
+      recurrence: true,
+      dueAt: true,
+      seriesId: true,
+      title: true,
+      contentJson: true,
+      contentMd: true,
+      expires: true,
     },
   });
   if (!card) throw new NotFoundError("card not found");
@@ -237,12 +345,15 @@ export async function moveCard(
     throw new ValidationError("cards can't be moved into the failed lane");
   }
 
-  // TODO(step C): spawn next recurrence instance when a card enters DONE here.
+  // Spawn the next recurrence instance when a card enters DONE — but not on
+  // a reorder within DONE (that's the same lane, not an entrance).
+  const entersDone = toLane === Lane.DONE && card.lane !== Lane.DONE;
   const sameLane = card.lane === toLane;
   // Auto-assign to the mover only matters on shared projects; on solo projects
   // there's no one to disambiguate, so don't stamp an assignee.
   const isShared = card.project.shares.length > 0;
   const autoAssign = isShared && toLane === Lane.DOING ? { assigneeId: userId } : {};
+  const now = new Date();
 
   await db.$transaction(async (tx) => {
     const source = await tx.card.findMany({
@@ -290,6 +401,10 @@ export async function moveCard(
         await tx.card.update({ where: { id: finalTarget[i].id }, data: { order: i } });
       }
     }
+
+    if (entersDone) {
+      await spawnNextOccurrence(tx, card, now);
+    }
   });
   await emitBoardForProject(card.projectId);
 }
@@ -307,31 +422,38 @@ export async function sweepDueCards(now: Date = new Date()): Promise<string[]> {
       dueAt: { lt: now },
       lane: { notIn: [Lane.DONE, Lane.FAILED] },
     },
-    select: { id: true, projectId: true },
+    select: {
+      id: true,
+      projectId: true,
+      recurrence: true,
+      dueAt: true,
+      seriesId: true,
+      title: true,
+      contentJson: true,
+      contentMd: true,
+      expires: true,
+    },
   });
   if (candidates.length === 0) return [];
 
-  const byProject = new Map<string, { id: string }[]>();
+  const byProject = new Map<string, typeof candidates>();
   for (const c of candidates) {
     const arr = byProject.get(c.projectId) ?? [];
-    arr.push({ id: c.id });
+    arr.push(c);
     byProject.set(c.projectId, arr);
   }
 
   await db.$transaction(async (tx) => {
     for (const [projectId, cards] of byProject) {
-      const max = await tx.card.findFirst({
-        where: { projectId, lane: Lane.FAILED },
-        orderBy: { order: "desc" },
-        select: { order: true },
-      });
-      let order = (max?.order ?? -1) + 1;
+      let order = await maxOrderInLane(tx, projectId, Lane.FAILED);
       for (const c of cards) {
         await tx.card.update({
           where: { id: c.id },
-          // TODO(step C): spawn next recurrence instance when a card enters FAILED here.
           data: { lane: Lane.FAILED, failedAt: now, order: order++ },
         });
+        // A card entering FAILED spawns its next occurrence right away —
+        // rescuing it later doesn't spawn again (see rescueCard).
+        await spawnNextOccurrence(tx, c, now);
       }
     }
   });
@@ -356,15 +478,13 @@ export async function rescueCard(userId: string, cardId: string): Promise<void> 
 
   const now = new Date();
   await db.$transaction(async (tx) => {
-    const max = await tx.card.findFirst({
-      where: { projectId: card.projectId, lane: Lane.DONE },
-      orderBy: { order: "desc" },
-      select: { order: true },
-    });
+    const order = await maxOrderInLane(tx, card.projectId, Lane.DONE);
     await tx.card.update({
       where: { id: card.id },
-      // TODO(step C): spawn next recurrence instance when a card enters DONE here.
-      data: { lane: Lane.DONE, order: (max?.order ?? -1) + 1, rescuedAt: now },
+      // No spawn here: the next occurrence was already created when this
+      // card entered FAILED (see sweepDueCards). Rescuing just recovers the
+      // original card into Done; it must not spawn a second time.
+      data: { lane: Lane.DONE, order, rescuedAt: now },
     });
   });
   await emitBoardForProject(card.projectId);

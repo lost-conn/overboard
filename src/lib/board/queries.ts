@@ -278,6 +278,8 @@ export type CardSummary = Pick<
   | "expires"
   | "failedAt"
   | "rescuedAt"
+  | "recurrence"
+  | "seriesId"
 > & { tags: TagChip[] };
 
 export async function listCards(
@@ -328,6 +330,8 @@ export async function listCards(
       expires: true,
       failedAt: true,
       rescuedAt: true,
+      recurrence: true,
+      seriesId: true,
       tags: { include: { tag: true } },
     },
   });

@@ -6,6 +6,7 @@ import { getSharedBoard, getProjectParticipants } from "@/lib/board";
 import type { ProjectRow } from "@/lib/board";
 import { listTags } from "@/lib/tags";
 import { Lane } from "@/generated/prisma/enums";
+import { parseRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
 import { logoutAction } from "../(auth)/actions";
 import { BoardClient, type ClientProject, type ClientTag } from "../_components/BoardClient";
 import styles from "./shared.module.css";
@@ -116,6 +117,8 @@ function toClientProject(p: ProjectRow, currentUserId: string): ClientProject {
       expires: c.expires,
       failedAt: c.failedAt ? c.failedAt.toISOString() : null,
       rescuedAt: c.rescuedAt ? c.rescuedAt.toISOString() : null,
+      recurrence: parseRecurrenceSafe(c.recurrence),
+      seriesId: c.seriesId,
     }));
   }
   return {
@@ -135,6 +138,15 @@ function parseContent(raw: string | null): Record<string, unknown> | null {
   if (!raw) return null;
   try {
     return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function parseRecurrenceSafe(raw: string | null): RecurrenceRule | null {
+  if (!raw) return null;
+  try {
+    return parseRecurrence(raw);
   } catch {
     return null;
   }

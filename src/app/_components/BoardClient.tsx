@@ -49,6 +49,7 @@ import {
 } from "./TagFilterBar";
 import { useBoardEvents } from "./useBoardEvents";
 import { describeDue, type DueTier } from "@/lib/board/due";
+import { describeRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
 import styles from "./BoardClient.module.css";
 
 const LANES = ["BACKLOG", "TODO", "DOING", "DONE", "FAILED"] as const;
@@ -77,6 +78,8 @@ export type ClientCard = {
   expires: boolean;
   failedAt: string | null;
   rescuedAt: string | null;
+  recurrence: RecurrenceRule | null;
+  seriesId: string | null;
 };
 
 export type ClientProject = {
@@ -281,6 +284,7 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
       lane: card.lane,
       failedAt: card.failedAt,
       rescuedAt: card.rescuedAt,
+      recurrence: card.recurrence,
     });
   };
 
@@ -475,8 +479,8 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
         card={drawerCard}
         allTags={drawerCard?.isShared ? resolveTagsForDrawer(drawerCard, localProjects, tagsByOwner, allTags) : allTags}
         onClose={() => setDrawerCard(null)}
-        onSave={async ({ id, title, contentJson, tags, tagsChanged, dueAt, expires }) => {
-          await updateCardAction({ id, title, contentJson, dueAt, expires });
+        onSave={async ({ id, title, contentJson, tags, tagsChanged, dueAt, expires, recurrence }) => {
+          await updateCardAction({ id, title, contentJson, dueAt, expires, recurrence });
           if (tagsChanged) {
             await setCardTagsAction({ cardId: id, tags });
           }
@@ -955,6 +959,11 @@ function SortableCardItem({
     <>
       <span className={styles.cardHead}>
         <span className={styles.cardTitle}>{card.title}</span>
+        {card.recurrence ? (
+          <span className={styles.recurChip} title={describeRecurrence(card.recurrence)}>
+            ↻
+          </span>
+        ) : null}
         {due ? (
           <span
             className={[

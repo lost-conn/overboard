@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "tsx scripts/seed.ts",
-    "db:reset": "rm -f data/app.db && prisma migrate deploy"
+    "db:reset": "rm -f data/app.db && prisma migrate deploy",
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

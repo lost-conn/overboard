@@ -21,6 +21,10 @@ const MAX_TAGS_PER_ITEM = 16;
 export type ImportMode = "merge" | "replace";
 
 export type BackupCard = {
+  // Original card id from the export. Not written on import (a fresh id is
+  // always assigned) — kept only to remap `seriesId` references within the
+  // same backup, since a recurring card's series links to another card's id.
+  id: string | null;
   lane: string;
   order: number;
   title: string;
@@ -31,6 +35,8 @@ export type BackupCard = {
   expires: boolean;
   failedAt: string | null;
   rescuedAt: string | null;
+  recurrence: string | null;
+  seriesId: string | null;
   tags: string[];
 };
 
@@ -183,6 +189,7 @@ export function parseBackup(raw: unknown): Backup {
         if (!isObject(c)) throw new ValidationError(`projects[${i}].cards[${j}] must be an object`);
         const where = `projects[${i}].cards[${j}]`;
         return {
+          id: asStringOrNull(c.id, `${where}.id`),
           lane: parseLane(c.lane),
           order: asInt(c.order ?? 0, `${where}.order`),
           title: asString(c.title, `${where}.title`, MAX_TITLE),
@@ -195,6 +202,9 @@ export function parseBackup(raw: unknown): Backup {
           // Absent on old backups (pre failed-lane feature): default to null (never failed/rescued).
           failedAt: asDateOrNull(c.failedAt, `${where}.failedAt`),
           rescuedAt: asDateOrNull(c.rescuedAt, `${where}.rescuedAt`),
+          // Absent on old backups (pre recurring-cards feature): default to null.
+          recurrence: asStringOrNull(c.recurrence, `${where}.recurrence`),
+          seriesId: asStringOrNull(c.seriesId, `${where}.seriesId`),
           tags: normalizeTagList(c.tags ?? [], `${where}.tags`),
         };
       }),
@@ -283,6 +293,14 @@ export async function importBackup(
       });
       counts.projects += 1;
 
+      // Card ids are regenerated on import, but a recurring card's `seriesId`
+      // points at another card's id within the same project (the series'
+      // original card). Map old -> new ids here so those links survive the
+      // id change; a second pass below rewrites seriesId once every card in
+      // the project has its new id.
+      const cardIdMap = new Map<string, string>();
+      const pendingSeriesId: { newId: string; oldSeriesId: string }[] = [];
+
       for (const c of p.cards) {
         const card = await tx.card.create({
           data: {
@@ -293,6 +311,7 @@ export async function importBackup(
             contentJson: c.contentJson,
             contentMd: c.contentMd,
             expires: c.expires,
+            recurrence: c.recurrence,
             // assigneeId intentionally dropped.
             ...(c.createdAt ? { createdAt: new Date(c.createdAt) } : {}),
             ...(c.dueAt ? { dueAt: new Date(c.dueAt) } : {}),
@@ -302,11 +321,21 @@ export async function importBackup(
           select: { id: true },
         });
         counts.cards += 1;
+        if (c.id) cardIdMap.set(c.id, card.id);
+        if (c.seriesId) pendingSeriesId.push({ newId: card.id, oldSeriesId: c.seriesId });
         if (c.tags.length > 0) {
           await tx.cardTag.createMany({
             data: c.tags.map((n) => ({ cardId: card.id, tagId: tagIdByName.get(n)! })),
           });
         }
+      }
+
+      for (const { newId, oldSeriesId } of pendingSeriesId) {
+        // If the referenced id isn't in this project's backup (e.g. a
+        // partial/edited export), drop the link rather than point at
+        // nothing or another user's card.
+        const newSeriesId = cardIdMap.get(oldSeriesId) ?? null;
+        await tx.card.update({ where: { id: newId }, data: { seriesId: newSeriesId } });
       }
     }
 

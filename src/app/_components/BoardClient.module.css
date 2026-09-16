@@ -375,6 +375,20 @@
   border-radius: 999px;
 }
 
+.recurChip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--text-dim) 14%, transparent);
+  border-radius: 999px;
+}
+
 .dueChipSoon {
   color: var(--warning);
   background: color-mix(in srgb, var(--warning) 16%, transparent);

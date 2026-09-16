@@ -5,6 +5,7 @@ import { currentUser } from "@/lib/auth";
 import { Lane } from "@/generated/prisma/enums";
 import * as core from "@/lib/board/mutations";
 import { NotFoundError, ValidationError } from "@/lib/errors";
+import type { RecurrenceRule } from "@/lib/board/recurrence";
 
 async function requireUserId(): Promise<string> {
   const user = await currentUser();
@@ -55,6 +56,7 @@ export async function updateCardAction(args: {
   contentJson: string | null;
   dueAt: string | null;
   expires: boolean;
+  recurrence?: RecurrenceRule | null;
 }): Promise<void> {
   const userId = await requireUserId();
   try {
@@ -64,6 +66,7 @@ export async function updateCardAction(args: {
       contentJson: args.contentJson,
       dueAt: args.dueAt ? new Date(args.dueAt) : null,
       expires: args.expires,
+      ...(args.recurrence !== undefined ? { recurrence: args.recurrence } : {}),
     });
   } catch (err) {
     swallowUserErrors(err);
