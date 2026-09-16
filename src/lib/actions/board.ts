@@ -32,10 +32,16 @@ export async function createProjectAction(formData: FormData): Promise<void> {
 export async function createCardAction(formData: FormData): Promise<void> {
   const userId = await requireUserId();
   try {
+    const dueAtRaw = formData.get("dueAt");
+    const expiresRaw = formData.get("expires");
     await core.createCard(userId, {
       projectId: String(formData.get("projectId") ?? ""),
       lane: String(formData.get("lane") ?? ""),
       title: String(formData.get("title") ?? ""),
+      ...(typeof dueAtRaw === "string" && dueAtRaw !== ""
+        ? { dueAt: new Date(dueAtRaw) }
+        : {}),
+      ...(typeof expiresRaw === "string" ? { expires: expiresRaw === "true" } : {}),
     });
   } catch (err) {
     swallowUserErrors(err);
@@ -47,10 +53,18 @@ export async function updateCardAction(args: {
   id: string;
   title: string;
   contentJson: string | null;
+  dueAt: string | null;
+  expires: boolean;
 }): Promise<void> {
   const userId = await requireUserId();
   try {
-    await core.updateCard(userId, args);
+    await core.updateCard(userId, {
+      id: args.id,
+      title: args.title,
+      contentJson: args.contentJson,
+      dueAt: args.dueAt ? new Date(args.dueAt) : null,
+      expires: args.expires,
+    });
   } catch (err) {
     swallowUserErrors(err);
   }

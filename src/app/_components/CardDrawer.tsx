@@ -21,6 +21,8 @@ export type DrawerCard = {
   assignee?: Participant | null;
   isShared?: boolean;
   participants?: Participant[];
+  dueAt: string | null;
+  expires: boolean;
 };
 
 type Props = {
@@ -33,16 +35,48 @@ type Props = {
     contentJson: string | null;
     tags: string[];
     tagsChanged: boolean;
+    dueAt: string | null;
+    expires: boolean;
   }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onAssign?: (cardId: string, assigneeId: string | null) => Promise<void>;
+  // Due-date/expires controls only make sense for board cards; the idea pool
+  // reuses this drawer without them. Defaults to true.
+  showDue?: boolean;
 };
 
-export function CardDrawer({ card, allTags, onClose, onSave, onDelete, onAssign }: Props) {
+// datetime-local inputs work in local wall-clock time with no timezone info;
+// convert to/from an ISO instant using the browser's own timezone.
+function isoToLocalInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localInputToIso(value: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+export function CardDrawer({
+  card,
+  allTags,
+  onClose,
+  onSave,
+  onDelete,
+  onAssign,
+  showDue = true,
+}: Props) {
   const open = card !== null;
   const [title, setTitle] = useState(card?.title ?? "");
   const [contentJson, setContentJson] = useState<EditorJSON | null>(card?.contentJson ?? null);
   const [tagNames, setTagNames] = useState<string[]>(card?.tags.map((t) => t.name) ?? []);
+  const [dueAtLocal, setDueAtLocal] = useState<string>(isoToLocalInput(card?.dueAt ?? null));
+  const [expires, setExpires] = useState<boolean>(card?.expires ?? false);
   const [isPending, startTransition] = useTransition();
   const [dirty, setDirty] = useState(false);
 
@@ -51,6 +85,8 @@ export function CardDrawer({ card, allTags, onClose, onSave, onDelete, onAssign 
       setTitle(card.title);
       setContentJson(card.contentJson);
       setTagNames(card.tags.map((t) => t.name));
+      setDueAtLocal(isoToLocalInput(card.dueAt));
+      setExpires(card.expires);
       setDirty(false);
     }
   }, [card]);
@@ -73,6 +109,8 @@ export function CardDrawer({ card, allTags, onClose, onSave, onDelete, onAssign 
         contentJson: contentJson ? JSON.stringify(contentJson) : null,
         tags: tagNames,
         tagsChanged,
+        dueAt: localInputToIso(dueAtLocal),
+        expires,
       });
       onClose();
     });
@@ -146,6 +184,47 @@ export function CardDrawer({ card, allTags, onClose, onSave, onDelete, onAssign 
               onSubmit={handleSave}
             />
           </div>
+
+          {showDue ? (
+            <div className={styles.dueSlot}>
+              <label className={styles.dueLabel} htmlFor="drawer-due-at">
+                Due
+              </label>
+              <input
+                id="drawer-due-at"
+                type="datetime-local"
+                className={styles.dueInput}
+                value={dueAtLocal}
+                onChange={(e) => {
+                  setDueAtLocal(e.target.value);
+                  setDirty(true);
+                }}
+              />
+              {dueAtLocal ? (
+                <button
+                  type="button"
+                  className={styles.dueClearBtn}
+                  onClick={() => {
+                    setDueAtLocal("");
+                    setDirty(true);
+                  }}
+                >
+                  Clear
+                </button>
+              ) : null}
+              <label className={styles.expiresLabel}>
+                <input
+                  type="checkbox"
+                  checked={expires}
+                  onChange={(e) => {
+                    setExpires(e.target.checked);
+                    setDirty(true);
+                  }}
+                />
+                Expires (fails when overdue)
+              </label>
+            </div>
+          ) : null}
 
           {card.isShared && card.participants && onAssign ? (
             <div className={styles.assigneeSlot}>

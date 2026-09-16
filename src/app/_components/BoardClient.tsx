@@ -47,6 +47,7 @@ import {
   useTagFilter,
 } from "./TagFilterBar";
 import { useBoardEvents } from "./useBoardEvents";
+import { describeDue, type DueTier } from "@/lib/board/due";
 import styles from "./BoardClient.module.css";
 
 const LANES = ["BACKLOG", "TODO", "DOING", "DONE"] as const;
@@ -70,6 +71,8 @@ export type ClientCard = {
   contentJson: Record<string, unknown> | null;
   tags: ClientTag[];
   assignee?: { id: string; email: string } | null;
+  dueAt: string | null;
+  expires: boolean;
 };
 
 export type ClientProject = {
@@ -103,6 +106,17 @@ function laneDroppableId(projectId: string, lane: LaneKey): string {
   return `lane:${projectId}:${lane}`;
 }
 
+// Ticks once a minute so due-date chips/urgency tiers stay current without a
+// server round trip.
+function useNow(intervalMs = 60_000): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
 const kanbanCollision: CollisionDetection = (args) => {
   const pointer = pointerWithin(args);
   const lanehit = pointer.find(
@@ -120,6 +134,7 @@ const kanbanCollision: CollisionDetection = (args) => {
 
 export function BoardClient({ projects, allTags, filterTags, tagsByOwner, currentUserId, participantsByProject }: Props) {
   const router = useRouter();
+  const now = useNow();
   const tagFilter = useTagFilter();
   const filterActive = tagFilterActive(tagFilter);
   const [localProjects, setLocalProjects] = useState<ClientProject[]>(projects);
@@ -256,6 +271,8 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
       assignee: card.assignee ?? null,
       isShared: project.isShared,
       participants: project.isShared ? (participantsByProject?.[project.id] ?? []) : undefined,
+      dueAt: card.dueAt,
+      expires: card.expires,
     });
   };
 
@@ -431,6 +448,7 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
                   onCardClick={openCard}
                   dndDisabled={filterActive}
                   onShareClick={project.isOwner ? () => setShareProjectId(project.id) : undefined}
+                  now={now}
                 />
               ))
             )}
@@ -444,8 +462,8 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
         card={drawerCard}
         allTags={drawerCard?.isShared ? resolveTagsForDrawer(drawerCard, localProjects, tagsByOwner, allTags) : allTags}
         onClose={() => setDrawerCard(null)}
-        onSave={async ({ id, title, contentJson, tags, tagsChanged }) => {
-          await updateCardAction({ id, title, contentJson });
+        onSave={async ({ id, title, contentJson, tags, tagsChanged, dueAt, expires }) => {
+          await updateCardAction({ id, title, contentJson, dueAt, expires });
           if (tagsChanged) {
             await setCardTagsAction({ cardId: id, tags });
           }
@@ -515,6 +533,7 @@ function ProjectRow({
   onCardClick,
   dndDisabled,
   onShareClick,
+  now,
 }: {
   project: ClientProject;
   viewState: ViewState;
@@ -523,6 +542,7 @@ function ProjectRow({
   onCardClick: (project: ClientProject, card: ClientCard) => void;
   dndDisabled: boolean;
   onShareClick?: () => void;
+  now: Date;
 }) {
   const [isPending, startTransition] = useTransition();
   const cardCount = Object.values(project.lanes).reduce((n, cs) => n + cs.length, 0);
@@ -664,6 +684,7 @@ function ProjectRow({
           isLaneCollapsed={collapsedLanes.has(lane)}
           onCardClick={(card) => onCardClick(project, card)}
           dndDisabled={dndDisabled}
+          now={now}
         />
       ))}
     </>
@@ -718,6 +739,7 @@ function LaneCell({
   isLaneCollapsed,
   onCardClick,
   dndDisabled,
+  now,
 }: {
   projectId: string;
   lane: LaneKey;
@@ -726,6 +748,7 @@ function LaneCell({
   isLaneCollapsed: boolean;
   onCardClick: (card: ClientCard) => void;
   dndDisabled: boolean;
+  now: Date;
 }) {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
@@ -796,6 +819,7 @@ function LaneCell({
                 projectId={projectId}
                 onClick={() => onCardClick(card)}
                 dndDisabled={dndDisabled}
+                now={now}
               />
             ))}
           </SortableContext>
@@ -841,16 +865,30 @@ function LaneCell({
   );
 }
 
+const DUE_CARD_CLASS: Record<Exclude<DueTier, "none">, string> = {
+  soon: styles.cardDueSoon,
+  imminent: styles.cardDueImminent,
+  overdue: styles.cardOverdue,
+};
+
+const DUE_CHIP_CLASS: Record<Exclude<DueTier, "none">, string> = {
+  soon: styles.dueChipSoon,
+  imminent: styles.dueChipImminent,
+  overdue: styles.dueChipOverdue,
+};
+
 function SortableCardItem({
   card,
   projectId,
   onClick,
   dndDisabled,
+  now,
 }: {
   card: ClientCard;
   projectId: string;
   onClick: () => void;
   dndDisabled: boolean;
+  now: Date;
 }) {
   const sortable = useSortable({
     id: card.id,
@@ -872,18 +910,39 @@ function SortableCardItem({
   const shown = card.tags.slice(0, MAX_CARD_CHIPS);
   const overflow = card.tags.length - shown.length;
 
+  // DONE cards never show urgency styling, but the chip label still renders.
+  const isDone = card.lane === "DONE";
+  const due = card.dueAt ? describeDue(new Date(card.dueAt), now) : null;
+  const dueTier = due && !isDone ? due.tier : null;
+
+  const cardClass = [styles.card, dueTier && dueTier !== "none" ? DUE_CARD_CLASS[dueTier] : ""]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <button
       ref={sortable.setNodeRef}
       style={style}
       type="button"
-      className={styles.card}
+      className={cardClass}
       onClick={onClick}
       {...sortable.attributes}
       {...sortable.listeners}
     >
       <span className={styles.cardHead}>
         <span className={styles.cardTitle}>{card.title}</span>
+        {due ? (
+          <span
+            className={[
+              styles.dueChip,
+              dueTier && dueTier !== "none" ? DUE_CHIP_CLASS[dueTier] : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {due.label}
+          </span>
+        ) : null}
         {card.contentJson ? <span className={styles.cardDot} aria-hidden /> : null}
       </span>
       {card.tags.length > 0 ? (

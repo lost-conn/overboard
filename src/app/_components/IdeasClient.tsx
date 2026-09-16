@@ -121,6 +121,8 @@ export function IdeasClient({
       title: idea.title,
       contentJson: idea.contentJson,
       tags: idea.tags,
+      dueAt: null,
+      expires: false,
     });
   };
 
@@ -190,6 +192,7 @@ export function IdeasClient({
       <CardDrawer
         card={drawerCard}
         allTags={allTags}
+        showDue={false}
         onClose={() => setDrawerCard(null)}
         onSave={async ({ id, title, contentJson, tags, tagsChanged }) => {
           await updateIdeaAction({ id, title, contentJson });

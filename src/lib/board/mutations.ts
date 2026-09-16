@@ -30,6 +30,22 @@ function parseLane(raw: unknown): Lane {
   return raw as Lane;
 }
 
+// undefined = leave unchanged (or, on create, unset); null = explicitly no due date.
+function validateDueAt(raw: Date | null | undefined): Date | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  if (!(raw instanceof Date) || Number.isNaN(raw.getTime())) {
+    throw new ValidationError("dueAt must be a valid date");
+  }
+  return raw;
+}
+
+function validateExpires(raw: boolean | undefined): boolean | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "boolean") throw new ValidationError("expires must be a boolean");
+  return raw;
+}
+
 export async function createProject(userId: string, name: string): Promise<Project> {
   const clean = trimTitle(name, 120);
   const project = await db.project.create({
@@ -121,10 +137,14 @@ export async function createCard(
     title: string;
     contentJson?: string | null;
     contentMd?: string | null;
+    dueAt?: Date | null;
+    expires?: boolean;
   },
 ): Promise<Card> {
   const lane = parseLane(args.lane);
   const title = trimTitle(args.title, 200);
+  const dueAt = validateDueAt(args.dueAt);
+  const expires = validateExpires(args.expires);
   await requireProjectAccess(userId, args.projectId);
 
   const max = await db.card.findFirst({
@@ -141,6 +161,8 @@ export async function createCard(
       title,
       ...(args.contentJson !== undefined ? { contentJson: args.contentJson } : {}),
       ...(args.contentMd !== undefined ? { contentMd: args.contentMd } : {}),
+      ...(dueAt !== undefined ? { dueAt } : {}),
+      ...(expires !== undefined ? { expires } : {}),
     },
   });
   await emitBoardForProject(args.projectId);
@@ -155,9 +177,13 @@ export async function updateCard(
     title: string;
     contentJson?: string | null;
     contentMd?: string | null;
+    dueAt?: Date | null;
+    expires?: boolean;
   },
 ): Promise<Card> {
   const title = trimTitle(args.title, 200);
+  const dueAt = validateDueAt(args.dueAt);
+  const expires = validateExpires(args.expires);
   const access = await requireCardAccess(userId, args.id);
 
   const updated = await db.card.update({
@@ -166,6 +192,8 @@ export async function updateCard(
       title,
       ...(args.contentJson !== undefined ? { contentJson: args.contentJson } : {}),
       ...(args.contentMd !== undefined ? { contentMd: args.contentMd } : {}),
+      ...(dueAt !== undefined ? { dueAt } : {}),
+      ...(expires !== undefined ? { expires } : {}),
     },
   });
   await emitBoardForProject(access.projectId);

@@ -8,11 +8,14 @@ import { compareProjects, scoreProject } from "./sorting";
 
 export const LANES = [Lane.BACKLOG, Lane.TODO, Lane.DOING, Lane.DONE] as const;
 
+// LANE_LABELS covers every Lane, including FAILED, which isn't a displayed
+// board column yet (that lands in step B). LANES above stays the 4 columns.
 export const LANE_LABELS: Record<Lane, string> = {
   [Lane.BACKLOG]: "Backlog",
   [Lane.TODO]: "To do",
   [Lane.DOING]: "Doing",
   [Lane.DONE]: "Done",
+  [Lane.FAILED]: "Failed",
 };
 
 export type CardWithTags = Card & {
@@ -21,7 +24,9 @@ export type CardWithTags = Card & {
 };
 
 export type ProjectRow = Project & {
-  lanes: Record<Lane, CardWithTags[]>;
+  // Only the 4 displayed columns — FAILED cards exist but aren't bucketed
+  // here until step B renders that column.
+  lanes: Record<(typeof LANES)[number], CardWithTags[]>;
   isShared: boolean;
   isOwner: boolean;
   ownerEmail?: string;
@@ -71,7 +76,7 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
     isOwner: boolean,
     opts?: { ownerEmail?: string; priorityOverride?: number; pinnedToBoard?: boolean },
   ): { row: ProjectRow; score: number } {
-    const lanes: Record<Lane, CardWithTags[]> = {
+    const lanes: Record<(typeof LANES)[number], CardWithTags[]> = {
       [Lane.BACKLOG]: [],
       [Lane.TODO]: [],
       [Lane.DOING]: [],
@@ -81,7 +86,10 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
     for (const c of p.cards) {
       const { tags, assignee, ...rest } = c;
       const withTags: CardWithTags = { ...rest, tags: joinToChips(tags), assignee };
-      lanes[c.lane].push(withTags);
+      // FAILED cards aren't a displayed column yet (step B); skip placement.
+      if (c.lane in lanes) {
+        lanes[c.lane as (typeof LANES)[number]].push(withTags);
+      }
       scoreCards.push(rest);
     }
     const { cards: _cards, shares, ...rest } = p;
@@ -144,7 +152,7 @@ export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
     .filter((s) => !s.project.archived)
     .map((s) => {
       const p = s.project;
-      const lanes: Record<Lane, CardWithTags[]> = {
+      const lanes: Record<(typeof LANES)[number], CardWithTags[]> = {
         [Lane.BACKLOG]: [],
         [Lane.TODO]: [],
         [Lane.DOING]: [],
@@ -153,7 +161,10 @@ export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
       const scoreCards: Card[] = [];
       for (const c of p.cards) {
         const { tags, assignee, ...rest } = c;
-        lanes[c.lane].push({ ...rest, tags: joinToChips(tags), assignee });
+        // FAILED cards aren't a displayed column yet (step B); skip placement.
+        if (c.lane in lanes) {
+          lanes[c.lane as (typeof LANES)[number]].push({ ...rest, tags: joinToChips(tags), assignee });
+        }
         scoreCards.push(rest);
       }
       const { cards: _cards, shares, user, ...rest } = p;
@@ -226,7 +237,7 @@ export async function listProjects(
 
 export type CardSummary = Pick<
   Card,
-  "id" | "projectId" | "lane" | "order" | "title" | "createdAt" | "updatedAt"
+  "id" | "projectId" | "lane" | "order" | "title" | "createdAt" | "updatedAt" | "dueAt" | "expires"
 > & { tags: TagChip[] };
 
 export async function listCards(
@@ -273,6 +284,8 @@ export async function listCards(
       title: true,
       createdAt: true,
       updatedAt: true,
+      dueAt: true,
+      expires: true,
       tags: { include: { tag: true } },
     },
   });

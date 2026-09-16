@@ -15,13 +15,15 @@ enum Lane {
   TODO
   DOING
   DONE
+  FAILED
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
+  id               String   @id @default(cuid())
+  email            String   @unique
+  passwordHash     String
+  createdAt        DateTime @default(now())
+  failedWindowDays Int      @default(7)
 
   sessions       Session[]
   projects       Project[]
@@ -75,7 +77,7 @@ model Project {
 }
 
 model Card {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   projectId   String
   lane        Lane
   order       Int
@@ -83,8 +85,14 @@ model Card {
   contentJson String? // ProseMirror JSON from TipTap
   contentMd   String? // Markdown export
   assigneeId  String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  dueAt       DateTime?
+  expires     Boolean   @default(false)
+  failedAt    DateTime?
+  rescuedAt   DateTime?
+  recurrence  String?
+  seriesId    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignee User?    @relation("assignedCards", fields: [assigneeId], references: [id], onDelete: SetNull)
@@ -93,6 +101,7 @@ model Card {
   @@index([projectId])
   @@index([projectId, lane, order])
   @@index([assigneeId])
+  @@index([dueAt])
 }
 
 model Idea {

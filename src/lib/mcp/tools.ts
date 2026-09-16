@@ -97,6 +97,17 @@ function requireStringArray(rec: Record<string, unknown>, key: string): string[]
   return arr;
 }
 
+// undefined = omitted (leave unchanged where relevant); null = explicit clear.
+function optionalDate(rec: Record<string, unknown>, key: string): Date | null | undefined {
+  const v = rec[key];
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  if (typeof v !== "string") throw new ValidationError(`${key} must be an ISO 8601 string or null`);
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) throw new ValidationError(`${key} is not a valid date`);
+  return d;
+}
+
 function optionalLane(rec: Record<string, unknown>, key: string): Lane | undefined {
   const v = rec[key];
   if (v === undefined || v === null) return undefined;
@@ -235,7 +246,7 @@ const deleteProject: Tool = {
 const listCards: Tool = {
   name: "list_cards",
   description:
-    "List cards across all projects (summaries only — no body). Filter by projectId, lane, and/or tag sets: tagsAny (OR), tagsAll (AND), tagsNot (exclude).",
+    "List cards across all projects (summaries only — no body — but includes dueAt and expires). Filter by projectId, lane, and/or tag sets: tagsAny (OR), tagsAll (AND), tagsNot (exclude).",
   inputSchema: {
     type: "object",
     properties: {
@@ -298,6 +309,8 @@ const getCard: Tool = {
       body: tipTapJsonToMarkdown(card.contentJson),
       tags: card.tags,
       assignee: card.assignee ?? null,
+      dueAt: card.dueAt ? card.dueAt.toISOString() : null,
+      expires: card.expires,
       createdAt: card.createdAt,
       updatedAt: card.updatedAt,
     };
@@ -306,7 +319,7 @@ const getCard: Tool = {
 
 const createCard: Tool = {
   name: "create_card",
-  description: "Create a card in a project lane. Optional body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link).",
+  description: "Create a card in a project lane. Optional body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link). Optionally set a due date and whether it expires (fails when overdue — sweeping to the Failed lane isn't implemented yet).",
   inputSchema: {
     type: "object",
     properties: {
@@ -314,6 +327,14 @@ const createCard: Tool = {
       lane: { type: "string", enum: LANE_VALUES },
       title: { type: "string", maxLength: 200 },
       body: { type: "string", description: "Optional markdown body." },
+      dueAt: {
+        type: ["string", "null"],
+        description: "ISO 8601 due date/time, or null for no due date.",
+      },
+      expires: {
+        type: "boolean",
+        description: "If true, an overdue card will (eventually) fail. Default false.",
+      },
     },
     required: ["projectId", "lane", "title"],
     additionalProperties: false,
@@ -321,24 +342,36 @@ const createCard: Tool = {
   handler: async (ctx, args) => {
     const rec = asRecord(args);
     const body = optionalString(rec, "body");
+    const dueAt = optionalDate(rec, "dueAt");
+    const expires = optionalBool(rec, "expires");
     return boardM.createCard(ctx.userId, {
       projectId: requireString(rec, "projectId"),
       lane: requireLane(rec, "lane"),
       title: requireString(rec, "title", 200),
       contentJson: body ? markdownToTipTapJson(body) : null,
+      ...(dueAt !== undefined ? { dueAt } : {}),
+      ...(expires !== undefined ? { expires } : {}),
     });
   },
 };
 
 const updateCard: Tool = {
   name: "update_card",
-  description: "Update a card's title and/or body. Omit body to leave it unchanged. Pass body=\"\" to clear. Body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link).",
+  description: "Update a card's title and/or body. Omit body to leave it unchanged. Pass body=\"\" to clear. Body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link). Omit dueAt/expires to leave them unchanged; pass dueAt=null to clear the due date.",
   inputSchema: {
     type: "object",
     properties: {
       id: { type: "string" },
       title: { type: "string", maxLength: 200 },
       body: { type: "string", description: "If provided, replaces the card body. Empty string clears." },
+      dueAt: {
+        type: ["string", "null"],
+        description: "ISO 8601 due date/time, or null to clear. Omit to leave unchanged.",
+      },
+      expires: {
+        type: "boolean",
+        description: "If true, an overdue card will (eventually) fail. Omit to leave unchanged.",
+      },
     },
     required: ["id", "title"],
     additionalProperties: false,
@@ -346,6 +379,8 @@ const updateCard: Tool = {
   handler: async (ctx, args) => {
     const rec = asRecord(args);
     const body = optionalString(rec, "body");
+    const dueAt = optionalDate(rec, "dueAt");
+    const expires = optionalBool(rec, "expires");
     return boardM.updateCard(ctx.userId, {
       id: requireString(rec, "id"),
       title: requireString(rec, "title", 200),
@@ -354,6 +389,8 @@ const updateCard: Tool = {
         : body === ""
           ? { contentJson: null }
           : { contentJson: markdownToTipTapJson(body) }),
+      ...(dueAt !== undefined ? { dueAt } : {}),
+      ...(expires !== undefined ? { expires } : {}),
     });
   },
 };

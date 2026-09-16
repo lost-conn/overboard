@@ -27,6 +27,8 @@ export type BackupCard = {
   contentJson: string | null;
   contentMd: string | null;
   createdAt: string | null;
+  dueAt: string | null;
+  expires: boolean;
   tags: string[];
 };
 
@@ -185,6 +187,9 @@ export function parseBackup(raw: unknown): Backup {
           contentJson: asStringOrNull(c.contentJson, `${where}.contentJson`),
           contentMd: asStringOrNull(c.contentMd, `${where}.contentMd`),
           createdAt: asDateOrNull(c.createdAt, `${where}.createdAt`),
+          // Absent on old backups (pre due-dates feature): default no due date, doesn't expire.
+          dueAt: asDateOrNull(c.dueAt, `${where}.dueAt`),
+          expires: c.expires === true,
           tags: normalizeTagList(c.tags ?? [], `${where}.tags`),
         };
       }),
@@ -282,8 +287,10 @@ export async function importBackup(
             title: c.title,
             contentJson: c.contentJson,
             contentMd: c.contentMd,
+            expires: c.expires,
             // assigneeId intentionally dropped.
             ...(c.createdAt ? { createdAt: new Date(c.createdAt) } : {}),
+            ...(c.dueAt ? { dueAt: new Date(c.dueAt) } : {}),
           },
           select: { id: true },
         });

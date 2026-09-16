@@ -7,6 +7,7 @@
   --accent: #0f766e;
   --accent-hover: #115e59;
   --danger: #b91c1c;
+  --warning: #b45309;
   --radius: 6px;
 }
 
@@ -20,6 +21,7 @@
     --accent: #2dd4bf;
     --accent-hover: #5eead4;
     --danger: #f87171;
+    --warning: #fbbf24;
     color-scheme: dark;
   }
 }

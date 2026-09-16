@@ -106,11 +106,13 @@ function toClientProject(p: ProjectRow, currentUserId: string): ClientProject {
   for (const lane of [Lane.BACKLOG, Lane.TODO, Lane.DOING, Lane.DONE] as const) {
     lanes[lane] = p.lanes[lane].map((c) => ({
       id: c.id,
-      lane: c.lane,
+      lane,
       title: c.title,
       contentJson: parseContent(c.contentJson),
       tags: c.tags,
       assignee: c.assignee ?? null,
+      dueAt: c.dueAt ? c.dueAt.toISOString() : null,
+      expires: c.expires,
     }));
   }
   return {

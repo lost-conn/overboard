@@ -337,6 +337,50 @@
   gap: 8px;
 }
 
+/* Due-date urgency tiers. Left border tint + matching chip; padding-left
+   trims 3px so the added border doesn't shift the content. */
+.cardDueSoon {
+  padding-left: 7px;
+  border-left: 3px solid var(--warning);
+}
+
+.cardDueImminent {
+  padding-left: 7px;
+  border-left: 3px solid color-mix(in srgb, var(--warning) 35%, var(--danger));
+}
+
+.cardOverdue {
+  padding-left: 7px;
+  border-left: 3px solid var(--danger);
+}
+
+.dueChip {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--text-dim) 14%, transparent);
+  border-radius: 999px;
+}
+
+.dueChipSoon {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+}
+
+.dueChipImminent {
+  color: color-mix(in srgb, var(--warning) 35%, var(--danger));
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
+.dueChipOverdue {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
 .cardTags {
   display: flex;
   flex-wrap: wrap;

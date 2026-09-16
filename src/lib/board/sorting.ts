@@ -10,10 +10,16 @@ export const LANE_WEIGHTS: Record<Lane, number> = {
   [Lane.TODO]: 0.7,
   [Lane.BACKLOG]: 0.3,
   [Lane.DONE]: 0.3,
+  [Lane.FAILED]: 0.3,
 };
 
 export const DOING_BONUS = 1.0;
 export const TODO_BONUS = 0.4;
+
+// Due-date urgency bonuses. Only applied to cards not already in DONE/FAILED.
+export const DUE_OVERDUE_BONUS = 1.5;
+export const DUE_IMMINENT_BONUS = 1.0; // due within 1 day
+export const DUE_SOON_BONUS = 0.5; // due within 3 days
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const WINDOW_MS = WINDOW_DAYS * MS_PER_DAY;
@@ -24,13 +30,24 @@ function timeDecay(updatedAtMs: number, nowMs: number): number {
   return Math.pow(0.5, ageDays / HALF_LIFE_DAYS);
 }
 
-type CardForScoring = Pick<Card, "lane" | "updatedAt">;
+type CardForScoring = Pick<Card, "lane" | "updatedAt" | "dueAt">;
+
+function dueBonus(card: CardForScoring, nowMs: number): number {
+  if (card.lane === Lane.DONE || card.lane === Lane.FAILED) return 0;
+  if (!card.dueAt) return 0;
+  const diffDays = (card.dueAt.getTime() - nowMs) / MS_PER_DAY;
+  if (diffDays < 0) return DUE_OVERDUE_BONUS;
+  if (diffDays <= 1) return DUE_IMMINENT_BONUS;
+  if (diffDays <= 3) return DUE_SOON_BONUS;
+  return 0;
+}
 
 export function scoreProject(cards: CardForScoring[], now: Date = new Date()): number {
   const nowMs = now.getTime();
   let editScore = 0;
   let doingCount = 0;
   let todoCount = 0;
+  let dueScore = 0;
 
   for (const card of cards) {
     if (card.lane === Lane.DOING) doingCount += 1;
@@ -40,9 +57,11 @@ export function scoreProject(cards: CardForScoring[], now: Date = new Date()): n
     if (nowMs - updatedAtMs <= WINDOW_MS) {
       editScore += LANE_WEIGHTS[card.lane] * timeDecay(updatedAtMs, nowMs);
     }
+
+    dueScore += dueBonus(card, nowMs);
   }
 
-  return editScore + DOING_BONUS * doingCount + TODO_BONUS * todoCount;
+  return editScore + DOING_BONUS * doingCount + TODO_BONUS * todoCount + dueScore;
 }
 
 export type RankableProject = Pick<Project, "priority" | "name">;
