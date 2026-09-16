@@ -34,7 +34,7 @@ export default async function SharedPage() {
 
   const usedNames = new Set<string>();
   for (const p of clientProjects) {
-    for (const lane of ["BACKLOG", "TODO", "DOING", "DONE"] as const) {
+    for (const lane of ["BACKLOG", "TODO", "DOING", "DONE", "FAILED"] as const) {
       for (const c of p.lanes[lane]) for (const t of c.tags) usedNames.add(t.name);
     }
   }
@@ -102,8 +102,9 @@ function toClientProject(p: ProjectRow, currentUserId: string): ClientProject {
     TODO: [],
     DOING: [],
     DONE: [],
+    FAILED: [],
   };
-  for (const lane of [Lane.BACKLOG, Lane.TODO, Lane.DOING, Lane.DONE] as const) {
+  for (const lane of [Lane.BACKLOG, Lane.TODO, Lane.DOING, Lane.DONE, Lane.FAILED] as const) {
     lanes[lane] = p.lanes[lane].map((c) => ({
       id: c.id,
       lane,
@@ -113,6 +114,8 @@ function toClientProject(p: ProjectRow, currentUserId: string): ClientProject {
       assignee: c.assignee ?? null,
       dueAt: c.dueAt ? c.dueAt.toISOString() : null,
       expires: c.expires,
+      failedAt: c.failedAt ? c.failedAt.toISOString() : null,
+      rescuedAt: c.rescuedAt ? c.rescuedAt.toISOString() : null,
     }));
   }
   return {

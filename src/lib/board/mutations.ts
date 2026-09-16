@@ -142,6 +142,9 @@ export async function createCard(
   },
 ): Promise<Card> {
   const lane = parseLane(args.lane);
+  if (lane === Lane.FAILED) {
+    throw new ValidationError("cards can't be created directly in the failed lane");
+  }
   const title = trimTitle(args.title, 200);
   const dueAt = validateDueAt(args.dueAt);
   const expires = validateExpires(args.expires);
@@ -227,7 +230,14 @@ export async function moveCard(
     },
   });
   if (!card) throw new NotFoundError("card not found");
+  if (card.lane === Lane.FAILED) {
+    throw new ValidationError("failed cards can't be moved");
+  }
+  if (toLane === Lane.FAILED) {
+    throw new ValidationError("cards can't be moved into the failed lane");
+  }
 
+  // TODO(step C): spawn next recurrence instance when a card enters DONE here.
   const sameLane = card.lane === toLane;
   // Auto-assign to the mover only matters on shared projects; on solo projects
   // there's no one to disambiguate, so don't stamp an assignee.
@@ -280,6 +290,82 @@ export async function moveCard(
         await tx.card.update({ where: { id: finalTarget[i].id }, data: { order: i } });
       }
     }
+  });
+  await emitBoardForProject(card.projectId);
+}
+
+/**
+ * Sweep cards that expired (expires=true, dueAt < now) and are still active
+ * (not DONE/FAILED) into the FAILED lane. Idempotent — a card already in
+ * FAILED never matches the query again. Returns the ids of projects that had
+ * at least one card swept, so callers can notify open tabs.
+ */
+export async function sweepDueCards(now: Date = new Date()): Promise<string[]> {
+  const candidates = await db.card.findMany({
+    where: {
+      expires: true,
+      dueAt: { lt: now },
+      lane: { notIn: [Lane.DONE, Lane.FAILED] },
+    },
+    select: { id: true, projectId: true },
+  });
+  if (candidates.length === 0) return [];
+
+  const byProject = new Map<string, { id: string }[]>();
+  for (const c of candidates) {
+    const arr = byProject.get(c.projectId) ?? [];
+    arr.push({ id: c.id });
+    byProject.set(c.projectId, arr);
+  }
+
+  await db.$transaction(async (tx) => {
+    for (const [projectId, cards] of byProject) {
+      const max = await tx.card.findFirst({
+        where: { projectId, lane: Lane.FAILED },
+        orderBy: { order: "desc" },
+        select: { order: true },
+      });
+      let order = (max?.order ?? -1) + 1;
+      for (const c of cards) {
+        await tx.card.update({
+          where: { id: c.id },
+          // TODO(step C): spawn next recurrence instance when a card enters FAILED here.
+          data: { lane: Lane.FAILED, failedAt: now, order: order++ },
+        });
+      }
+    }
+  });
+
+  return [...byProject.keys()];
+}
+
+/**
+ * Rescue a FAILED card back into DONE (appended at the end). Keeps failedAt
+ * as a record of the failure; rescuedAt marks it was manually recovered.
+ */
+export async function rescueCard(userId: string, cardId: string): Promise<void> {
+  const access = await requireCardAccess(userId, cardId);
+  const card = await db.card.findFirst({
+    where: { id: access.cardId },
+    select: { id: true, lane: true, projectId: true },
+  });
+  if (!card) throw new NotFoundError("card not found");
+  if (card.lane !== Lane.FAILED) {
+    throw new ValidationError("only failed cards can be rescued");
+  }
+
+  const now = new Date();
+  await db.$transaction(async (tx) => {
+    const max = await tx.card.findFirst({
+      where: { projectId: card.projectId, lane: Lane.DONE },
+      orderBy: { order: "desc" },
+      select: { order: true },
+    });
+    await tx.card.update({
+      where: { id: card.id },
+      // TODO(step C): spawn next recurrence instance when a card enters DONE here.
+      data: { lane: Lane.DONE, order: (max?.order ?? -1) + 1, rescuedAt: now },
+    });
   });
   await emitBoardForProject(card.projectId);
 }

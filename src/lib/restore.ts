@@ -29,6 +29,8 @@ export type BackupCard = {
   createdAt: string | null;
   dueAt: string | null;
   expires: boolean;
+  failedAt: string | null;
+  rescuedAt: string | null;
   tags: string[];
 };
 
@@ -190,6 +192,9 @@ export function parseBackup(raw: unknown): Backup {
           // Absent on old backups (pre due-dates feature): default no due date, doesn't expire.
           dueAt: asDateOrNull(c.dueAt, `${where}.dueAt`),
           expires: c.expires === true,
+          // Absent on old backups (pre failed-lane feature): default to null (never failed/rescued).
+          failedAt: asDateOrNull(c.failedAt, `${where}.failedAt`),
+          rescuedAt: asDateOrNull(c.rescuedAt, `${where}.rescuedAt`),
           tags: normalizeTagList(c.tags ?? [], `${where}.tags`),
         };
       }),
@@ -291,6 +296,8 @@ export async function importBackup(
             // assigneeId intentionally dropped.
             ...(c.createdAt ? { createdAt: new Date(c.createdAt) } : {}),
             ...(c.dueAt ? { dueAt: new Date(c.dueAt) } : {}),
+            ...(c.failedAt ? { failedAt: new Date(c.failedAt) } : {}),
+            ...(c.rescuedAt ? { rescuedAt: new Date(c.rescuedAt) } : {}),
           },
           select: { id: true },
         });

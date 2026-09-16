@@ -8,7 +8,7 @@
   display: grid;
   /* grid-template-columns is set inline by BoardClient so lane collapses
      can change column widths at runtime. */
-  grid-template-columns: 220px repeat(4, minmax(160px, 1fr));
+  grid-template-columns: 220px repeat(5, minmax(160px, 1fr));
   gap: 8px;
 }
 
@@ -266,23 +266,32 @@
 
 /* Minimized rows: lanes cap at roughly three cards' worth of height, with
    internal scroll for the rest. */
-.laneCellMinimized:not(.laneCellDone) .laneInner {
+.laneCellMinimized:not(.laneCellDone):not(.laneCellFailed) .laneInner {
   max-height: 200px;
   overflow-y: auto;
 }
 
-/* Done lane: contents are positioned absolutely so they don't size the grid
-   row. The row's height is driven by Backlog/Todo/Doing, and Done scrolls
-   internally up to that height. */
-.laneCellDone .laneInner {
+/* Done/Failed lanes: contents are positioned absolutely so they don't size
+   the grid row. The row's height is driven by Backlog/Todo/Doing, and
+   Done/Failed scroll internally up to that height. */
+.laneCellDone .laneInner,
+.laneCellFailed .laneInner {
   position: absolute;
   inset: 0;
   overflow-y: auto;
 }
 
-.laneCellDone.laneCellMinimized {
+.laneCellDone.laneCellMinimized,
+.laneCellFailed.laneCellMinimized {
   /* Cell height still bounded by sibling lanes' max-height (200px) because the
      grid row is shaped by them. No extra constraint needed here. */
+}
+
+/* Failed lane: muted/danger tint — a heads-up without being as loud as an
+   overdue card border. */
+.laneCellFailed {
+  background: color-mix(in srgb, var(--danger) 6%, color-mix(in srgb, var(--surface) 50%, transparent));
+  border-color: color-mix(in srgb, var(--danger) 22%, var(--border));
 }
 
 /* Project row collapsed: lane cells shrink to a transparent strip and hide
@@ -385,6 +394,53 @@
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
+}
+
+/* Failed cards: muted, non-interactive drag-wise. Rendered as a
+   div[role=button] (see SortableCardItem) since a sibling Rescue <button>
+   can't nest inside a real <button>. */
+.cardFailedWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cardFailed {
+  opacity: 0.72;
+  padding-left: 7px;
+  border-left: 3px solid var(--danger);
+  cursor: pointer;
+}
+
+.cardFailed:hover {
+  opacity: 0.92;
+}
+
+.rescueBtn {
+  align-self: flex-end;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 999px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.rescueBtn:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: var(--accent);
+}
+
+.rescuedChip {
+  align-self: flex-start;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 999px;
 }
 
 .filterEmpty {
@@ -606,9 +662,10 @@
     border-radius: 3px;
   }
 
-  /* Done lane uses absolute positioning to share height with siblings in the
-     grid row. That logic doesn't apply when each lane is its own row. */
-  .laneCellDone .laneInner {
+  /* Done/Failed lanes use absolute positioning to share height with siblings
+     in the grid row. That logic doesn't apply when each lane is its own row. */
+  .laneCellDone .laneInner,
+  .laneCellFailed .laneInner {
     position: static;
     overflow-y: visible;
   }
@@ -618,7 +675,7 @@
     min-height: 0;
   }
 
-  .laneCellMinimized:not(.laneCellDone) .laneInner {
+  .laneCellMinimized:not(.laneCellDone):not(.laneCellFailed) .laneInner {
     max-height: 240px;
   }
 

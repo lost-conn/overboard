@@ -311,6 +311,8 @@ const getCard: Tool = {
       assignee: card.assignee ?? null,
       dueAt: card.dueAt ? card.dueAt.toISOString() : null,
       expires: card.expires,
+      failedAt: card.failedAt ? card.failedAt.toISOString() : null,
+      rescuedAt: card.rescuedAt ? card.rescuedAt.toISOString() : null,
       createdAt: card.createdAt,
       updatedAt: card.updatedAt,
     };
@@ -319,7 +321,7 @@ const getCard: Tool = {
 
 const createCard: Tool = {
   name: "create_card",
-  description: "Create a card in a project lane. Optional body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link). Optionally set a due date and whether it expires (fails when overdue — sweeping to the Failed lane isn't implemented yet).",
+  description: "Create a card in a project lane (not FAILED — that's reserved for the sweep). Optional body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link). Optionally set a due date and whether it expires (an overdue expiring card moves to the Failed lane within a minute).",
   inputSchema: {
     type: "object",
     properties: {
@@ -333,7 +335,7 @@ const createCard: Tool = {
       },
       expires: {
         type: "boolean",
-        description: "If true, an overdue card will (eventually) fail. Default false.",
+        description: "If true, the card moves to the Failed lane within a minute of its due date passing. Default false.",
       },
     },
     required: ["projectId", "lane", "title"],
@@ -357,7 +359,7 @@ const createCard: Tool = {
 
 const updateCard: Tool = {
   name: "update_card",
-  description: "Update a card's title and/or body. Omit body to leave it unchanged. Pass body=\"\" to clear. Body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link). Omit dueAt/expires to leave them unchanged; pass dueAt=null to clear the due date.",
+  description: "Update a card's title and/or body. Omit body to leave it unchanged. Pass body=\"\" to clear. Body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link). Omit dueAt/expires to leave them unchanged; pass dueAt=null to clear the due date. Can't move a card to/from the Failed lane this way.",
   inputSchema: {
     type: "object",
     properties: {
@@ -370,7 +372,7 @@ const updateCard: Tool = {
       },
       expires: {
         type: "boolean",
-        description: "If true, an overdue card will (eventually) fail. Omit to leave unchanged.",
+        description: "If true, the card moves to the Failed lane within a minute of its due date passing. Omit to leave unchanged.",
       },
     },
     required: ["id", "title"],
@@ -397,7 +399,7 @@ const updateCard: Tool = {
 
 const moveCard: Tool = {
   name: "move_card",
-  description: "Move a card to a (possibly different) lane at the given index. Idempotent.",
+  description: "Move a card to a (possibly different) lane at the given index. Idempotent. Rejects moving into or out of the Failed lane (use rescue_card to recover a failed card).",
   inputSchema: {
     type: "object",
     properties: {
@@ -432,6 +434,23 @@ const deleteCard: Tool = {
     const rec = asRecord(args);
     await boardM.deleteCard(ctx.userId, requireString(rec, "id"));
     return { deleted: true };
+  },
+};
+
+const rescueCard: Tool = {
+  name: "rescue_card",
+  description:
+    "Rescue a card out of the Failed lane back into Done. Fails if the card isn't currently in the Failed lane.",
+  inputSchema: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    await boardM.rescueCard(ctx.userId, requireString(rec, "id"));
+    return { rescued: true };
   },
 };
 
@@ -746,6 +765,7 @@ export const TOOLS: Tool[] = [
   updateCard,
   moveCard,
   deleteCard,
+  rescueCard,
   listIdeas,
   getIdea,
   createIdea,

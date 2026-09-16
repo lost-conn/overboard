@@ -28,9 +28,14 @@ export default async function TokensPage() {
             For MCP and other programmatic access. Each token grants full access to your data.
           </p>
         </div>
-        <Link className={styles.back} href="/">
-          ← Board
-        </Link>
+        <div className={styles.headerLinks}>
+          <Link className={styles.back} href="/settings/board">
+            Board settings
+          </Link>
+          <Link className={styles.back} href="/">
+            ← Board
+          </Link>
+        </div>
       </header>
 
       {freshlyMinted ? (

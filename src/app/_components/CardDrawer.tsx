@@ -23,6 +23,10 @@ export type DrawerCard = {
   participants?: Participant[];
   dueAt: string | null;
   expires: boolean;
+  // Lane isn't meaningful for the idea pool, which reuses this drawer — optional there.
+  lane?: string;
+  failedAt?: string | null;
+  rescuedAt?: string | null;
 };
 
 type Props = {
@@ -40,6 +44,8 @@ type Props = {
   }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onAssign?: (cardId: string, assigneeId: string | null) => Promise<void>;
+  // Board-only: rescues a FAILED card back to DONE. Absent for the idea pool.
+  onRescue?: (id: string) => Promise<void>;
   // Due-date/expires controls only make sense for board cards; the idea pool
   // reuses this drawer without them. Defaults to true.
   showDue?: boolean;
@@ -69,6 +75,7 @@ export function CardDrawer({
   onSave,
   onDelete,
   onAssign,
+  onRescue,
   showDue = true,
 }: Props) {
   const open = card !== null;
@@ -125,6 +132,16 @@ export function CardDrawer({
     });
   };
 
+  const isFailed = card.lane === "FAILED";
+  const handleRescue = () => {
+    if (!onRescue) return;
+    const id = card.id;
+    startTransition(async () => {
+      await onRescue(id);
+      onClose();
+    });
+  };
+
   return (
     <Dialog.Root
       open={open}
@@ -154,6 +171,12 @@ export function CardDrawer({
               <X size={16} aria-hidden />
             </Dialog.Close>
           </div>
+
+          {card.rescuedAt ? (
+            <div className={styles.rescuedBanner}>
+              <span className={styles.rescuedChip}>rescued</span>
+            </div>
+          ) : null}
 
           <input
             className={styles.titleInput}
@@ -284,6 +307,16 @@ export function CardDrawer({
               >
                 {isPending ? "Saving…" : "Save"}
               </button>
+              {isFailed && onRescue ? (
+                <button
+                  type="button"
+                  className={styles.rescueBtn}
+                  onClick={handleRescue}
+                  disabled={isPending}
+                >
+                  {isPending ? "Rescuing…" : "Mark complete (rescue)"}
+                </button>
+              ) : null}
             </div>
           </div>
         </Dialog.Content>

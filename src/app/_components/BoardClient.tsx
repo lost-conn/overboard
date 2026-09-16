@@ -37,6 +37,7 @@ import {
 } from "@/lib/actions/board";
 import { setCardTagsAction } from "@/lib/actions/tags";
 import { assignCardAction, setPinnedToBoardAction } from "@/lib/actions/sharing";
+import { rescueCardAction } from "@/lib/actions/board";
 import { CardDrawer, type DrawerCard } from "./CardDrawer";
 import { ShareDialog } from "./ShareDialog";
 import { TagChip, TagChipOverflow } from "./TagChip";
@@ -50,7 +51,7 @@ import { useBoardEvents } from "./useBoardEvents";
 import { describeDue, type DueTier } from "@/lib/board/due";
 import styles from "./BoardClient.module.css";
 
-const LANES = ["BACKLOG", "TODO", "DOING", "DONE"] as const;
+const LANES = ["BACKLOG", "TODO", "DOING", "DONE", "FAILED"] as const;
 type LaneKey = (typeof LANES)[number];
 
 const LANE_LABELS: Record<LaneKey, string> = {
@@ -58,6 +59,7 @@ const LANE_LABELS: Record<LaneKey, string> = {
   TODO: "To do",
   DOING: "Doing",
   DONE: "Done",
+  FAILED: "Failed",
 };
 
 type ViewState = "collapsed" | "minimized" | "expanded";
@@ -73,6 +75,8 @@ export type ClientCard = {
   assignee?: { id: string; email: string } | null;
   dueAt: string | null;
   expires: boolean;
+  failedAt: string | null;
+  rescuedAt: string | null;
 };
 
 export type ClientProject = {
@@ -209,6 +213,7 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
           TODO: [],
           DOING: [],
           DONE: [],
+          FAILED: [],
         };
         let any = false;
         for (const lane of LANES) {
@@ -253,7 +258,7 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
     });
   };
 
-  // Grid columns: project col + 4 lane cols. Collapsed lanes shrink to a thin strip.
+  // Grid columns: project col + 5 lane cols. Collapsed lanes shrink to a thin strip.
   const gridTemplateColumns = useMemo(() => {
     const lanes = LANES.map((l) =>
       collapsedLanes.has(l) ? "44px" : "minmax(160px, 1fr)",
@@ -273,7 +278,14 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
       participants: project.isShared ? (participantsByProject?.[project.id] ?? []) : undefined,
       dueAt: card.dueAt,
       expires: card.expires,
+      lane: card.lane,
+      failedAt: card.failedAt,
+      rescuedAt: card.rescuedAt,
     });
+  };
+
+  const handleRescue = (cardId: string) => {
+    void rescueCardAction(cardId);
   };
 
   const handleDragStart = (e: DragStartEvent) => {
@@ -446,6 +458,7 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
                   onViewStateChange={(s) => setProjectViewState(project.id, s)}
                   collapsedLanes={collapsedLanes}
                   onCardClick={openCard}
+                  onRescue={handleRescue}
                   dndDisabled={filterActive}
                   onShareClick={project.isOwner ? () => setShareProjectId(project.id) : undefined}
                   now={now}
@@ -474,6 +487,9 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
         onAssign={drawerCard?.isShared ? async (cardId, assigneeId) => {
           await assignCardAction({ cardId, assigneeId });
         } : undefined}
+        onRescue={async (id) => {
+          await rescueCardAction(id);
+        }}
       />
 
       <ShareDialog
@@ -531,6 +547,7 @@ function ProjectRow({
   onViewStateChange,
   collapsedLanes,
   onCardClick,
+  onRescue,
   dndDisabled,
   onShareClick,
   now,
@@ -540,6 +557,7 @@ function ProjectRow({
   onViewStateChange: (s: ViewState) => void;
   collapsedLanes: Set<LaneKey>;
   onCardClick: (project: ClientProject, card: ClientCard) => void;
+  onRescue: (cardId: string) => void;
   dndDisabled: boolean;
   onShareClick?: () => void;
   now: Date;
@@ -683,6 +701,7 @@ function ProjectRow({
           viewState={viewState}
           isLaneCollapsed={collapsedLanes.has(lane)}
           onCardClick={(card) => onCardClick(project, card)}
+          onRescue={onRescue}
           dndDisabled={dndDisabled}
           now={now}
         />
@@ -738,6 +757,7 @@ function LaneCell({
   viewState,
   isLaneCollapsed,
   onCardClick,
+  onRescue,
   dndDisabled,
   now,
 }: {
@@ -747,6 +767,7 @@ function LaneCell({
   viewState: ViewState;
   isLaneCollapsed: boolean;
   onCardClick: (card: ClientCard) => void;
+  onRescue: (cardId: string) => void;
   dndDisabled: boolean;
   now: Date;
 }) {
@@ -754,11 +775,12 @@ function LaneCell({
   const [title, setTitle] = useState("");
   const [isPending, startTransition] = useTransition();
   const submittingRef = useRef(false);
+  const isFailed = lane === "FAILED";
 
   const droppable = useDroppable({
     id: laneDroppableId(projectId, lane),
     data: { type: "lane", projectId, lane } satisfies DragData,
-    disabled: dndDisabled,
+    disabled: dndDisabled || isFailed,
   });
 
   const submit = () => {
@@ -792,6 +814,7 @@ function LaneCell({
   const cellClass = [
     styles.laneCell,
     isDone && styles.laneCellDone,
+    isFailed && styles.laneCellFailed,
     isMinimized && styles.laneCellMinimized,
     isRowCollapsed && styles.laneCellRowCollapsed,
     isLaneCollapsed && styles.laneCellColCollapsed,
@@ -818,13 +841,14 @@ function LaneCell({
                 card={card}
                 projectId={projectId}
                 onClick={() => onCardClick(card)}
+                onRescue={onRescue}
                 dndDisabled={dndDisabled}
                 now={now}
               />
             ))}
           </SortableContext>
 
-          {dndDisabled ? null : adding ? (
+          {dndDisabled || isFailed ? null : adding ? (
             <form
               className={styles.addForm}
               onSubmit={(e) => {
@@ -881,15 +905,18 @@ function SortableCardItem({
   card,
   projectId,
   onClick,
+  onRescue,
   dndDisabled,
   now,
 }: {
   card: ClientCard;
   projectId: string;
   onClick: () => void;
+  onRescue: (cardId: string) => void;
   dndDisabled: boolean;
   now: Date;
 }) {
+  const isFailed = card.lane === "FAILED";
   const sortable = useSortable({
     id: card.id,
     data: {
@@ -898,7 +925,7 @@ function SortableCardItem({
       projectId,
       lane: card.lane,
     } satisfies DragData,
-    disabled: dndDisabled,
+    disabled: dndDisabled || isFailed,
   });
   const style = {
     transform: CSS.Transform.toString(sortable.transform),
@@ -910,25 +937,22 @@ function SortableCardItem({
   const shown = card.tags.slice(0, MAX_CARD_CHIPS);
   const overflow = card.tags.length - shown.length;
 
-  // DONE cards never show urgency styling, but the chip label still renders.
+  // DONE/FAILED cards never show due-urgency styling, but the chip label
+  // still renders.
   const isDone = card.lane === "DONE";
   const due = card.dueAt ? describeDue(new Date(card.dueAt), now) : null;
-  const dueTier = due && !isDone ? due.tier : null;
+  const dueTier = due && !isDone && !isFailed ? due.tier : null;
 
-  const cardClass = [styles.card, dueTier && dueTier !== "none" ? DUE_CARD_CLASS[dueTier] : ""]
+  const cardClass = [
+    styles.card,
+    isFailed && styles.cardFailed,
+    dueTier && dueTier !== "none" ? DUE_CARD_CLASS[dueTier] : "",
+  ]
     .filter(Boolean)
     .join(" ");
 
-  return (
-    <button
-      ref={sortable.setNodeRef}
-      style={style}
-      type="button"
-      className={cardClass}
-      onClick={onClick}
-      {...sortable.attributes}
-      {...sortable.listeners}
-    >
+  const cardBody = (
+    <>
       <span className={styles.cardHead}>
         <span className={styles.cardTitle}>{card.title}</span>
         {due ? (
@@ -945,6 +969,7 @@ function SortableCardItem({
         ) : null}
         {card.contentJson ? <span className={styles.cardDot} aria-hidden /> : null}
       </span>
+      {card.rescuedAt ? <span className={styles.rescuedChip}>rescued</span> : null}
       {card.tags.length > 0 ? (
         <span className={styles.cardTags}>
           {shown.map((t) => (
@@ -956,6 +981,54 @@ function SortableCardItem({
       {card.assignee ? (
         <span className={styles.cardAssignee}>{card.assignee.email.split("@")[0]}</span>
       ) : null}
+    </>
+  );
+
+  // FAILED cards aren't draggable and get a Rescue control. The card itself
+  // becomes a <button>, so the Rescue button can't nest inside it — render
+  // both as siblings in a wrapper instead, with the "card" a div[role=button].
+  if (isFailed) {
+    return (
+      <div ref={sortable.setNodeRef} style={style} className={styles.cardFailedWrap}>
+        <div
+          role="button"
+          tabIndex={0}
+          className={cardClass}
+          onClick={onClick}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onClick();
+            }
+          }}
+        >
+          {cardBody}
+        </div>
+        <button
+          type="button"
+          className={styles.rescueBtn}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRescue(card.id);
+          }}
+        >
+          Rescue
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      ref={sortable.setNodeRef}
+      style={style}
+      type="button"
+      className={cardClass}
+      onClick={onClick}
+      {...sortable.attributes}
+      {...sortable.listeners}
+    >
+      {cardBody}
     </button>
   );
 }

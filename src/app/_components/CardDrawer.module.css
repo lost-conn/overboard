@@ -276,3 +276,38 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.rescueBtn {
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.rescueBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.rescueBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rescuedBanner {
+  margin: 12px 20px 0;
+}
+
+.rescuedChip {
+  display: inline-flex;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 999px;
+}

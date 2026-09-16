@@ -1,0 +1,113 @@
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.headerLinks {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.back {
+  font-size: 13px;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--text);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.fieldRow {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.input {
+  width: 100px;
+  padding: 9px 11px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--accent);
+}
+
+.submit {
+  display: inline-block;
+  padding: 9px 14px;
+  font: inherit;
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.submit:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}

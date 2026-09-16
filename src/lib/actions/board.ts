@@ -128,3 +128,13 @@ export async function renameProjectAction(args: { id: string; name: string }): P
   }
   revalidatePath("/");
 }
+
+export async function rescueCardAction(id: string): Promise<void> {
+  const userId = await requireUserId();
+  try {
+    await core.rescueCard(userId, id);
+  } catch (err) {
+    swallowUserErrors(err);
+  }
+  revalidatePath("/");
+}

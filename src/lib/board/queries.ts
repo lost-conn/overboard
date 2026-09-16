@@ -5,11 +5,11 @@ import type { Card, Project } from "@/generated/prisma/client";
 import { NotFoundError } from "@/lib/errors";
 import { joinToChips, type TagChip } from "@/lib/tags";
 import { compareProjects, scoreProject } from "./sorting";
+import { sweepDueCards } from "./mutations";
+import { emitBoardForProject } from "./access";
 
-export const LANES = [Lane.BACKLOG, Lane.TODO, Lane.DOING, Lane.DONE] as const;
+export const LANES = [Lane.BACKLOG, Lane.TODO, Lane.DOING, Lane.DONE, Lane.FAILED] as const;
 
-// LANE_LABELS covers every Lane, including FAILED, which isn't a displayed
-// board column yet (that lands in step B). LANES above stays the 4 columns.
 export const LANE_LABELS: Record<Lane, string> = {
   [Lane.BACKLOG]: "Backlog",
   [Lane.TODO]: "To do",
@@ -18,14 +18,15 @@ export const LANE_LABELS: Record<Lane, string> = {
   [Lane.FAILED]: "Failed",
 };
 
+const DEFAULT_FAILED_WINDOW_DAYS = 7;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 export type CardWithTags = Card & {
   tags: TagChip[];
   assignee?: { id: string; email: string } | null;
 };
 
 export type ProjectRow = Project & {
-  // Only the 4 displayed columns — FAILED cards exist but aren't bucketed
-  // here until step B renders that column.
   lanes: Record<(typeof LANES)[number], CardWithTags[]>;
   isShared: boolean;
   isOwner: boolean;
@@ -33,7 +34,28 @@ export type ProjectRow = Project & {
   pinnedToBoard?: boolean;
 };
 
+// Sweep due cards into FAILED, then notify any *other* open tabs for projects
+// that changed. The caller of getBoardForUser/getSharedBoard is about to get
+// fresh data from this same read, so it doesn't need its own event.
+async function sweepAndNotify(): Promise<void> {
+  const changedProjectIds = await sweepDueCards();
+  if (changedProjectIds.length === 0) return;
+  await Promise.all(changedProjectIds.map((pid) => emitBoardForProject(pid)));
+}
+
+async function getFailedWindowDays(userId: string): Promise<number> {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { failedWindowDays: true },
+  });
+  return user?.failedWindowDays ?? DEFAULT_FAILED_WINDOW_DAYS;
+}
+
 export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
+  await sweepAndNotify();
+  const failedWindowDays = await getFailedWindowDays(userId);
+  const failedCutoff = new Date(Date.now() - failedWindowDays * MS_PER_DAY);
+
   const [ownedProjects, sharedLinks] = await Promise.all([
     db.project.findMany({
       where: { userId, archived: false },
@@ -81,15 +103,18 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
       [Lane.TODO]: [],
       [Lane.DOING]: [],
       [Lane.DONE]: [],
+      [Lane.FAILED]: [],
     };
     const scoreCards: Card[] = [];
     for (const c of p.cards) {
+      // FAILED cards past the viewer's failedWindowDays are hidden from the
+      // board entirely (they still exist in the DB) and excluded from scoring.
+      if (c.lane === Lane.FAILED && c.failedAt && c.failedAt.getTime() < failedCutoff.getTime()) {
+        continue;
+      }
       const { tags, assignee, ...rest } = c;
       const withTags: CardWithTags = { ...rest, tags: joinToChips(tags), assignee };
-      // FAILED cards aren't a displayed column yet (step B); skip placement.
-      if (c.lane in lanes) {
-        lanes[c.lane as (typeof LANES)[number]].push(withTags);
-      }
+      lanes[c.lane].push(withTags);
       scoreCards.push(rest);
     }
     const { cards: _cards, shares, ...rest } = p;
@@ -128,6 +153,10 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
 }
 
 export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
+  await sweepAndNotify();
+  const failedWindowDays = await getFailedWindowDays(userId);
+  const failedCutoff = new Date(Date.now() - failedWindowDays * MS_PER_DAY);
+
   const sharedLinks = await db.projectShare.findMany({
     where: { sharedWithUserId: userId },
     include: {
@@ -157,14 +186,15 @@ export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
         [Lane.TODO]: [],
         [Lane.DOING]: [],
         [Lane.DONE]: [],
+        [Lane.FAILED]: [],
       };
       const scoreCards: Card[] = [];
       for (const c of p.cards) {
-        const { tags, assignee, ...rest } = c;
-        // FAILED cards aren't a displayed column yet (step B); skip placement.
-        if (c.lane in lanes) {
-          lanes[c.lane as (typeof LANES)[number]].push({ ...rest, tags: joinToChips(tags), assignee });
+        if (c.lane === Lane.FAILED && c.failedAt && c.failedAt.getTime() < failedCutoff.getTime()) {
+          continue;
         }
+        const { tags, assignee, ...rest } = c;
+        lanes[c.lane].push({ ...rest, tags: joinToChips(tags), assignee });
         scoreCards.push(rest);
       }
       const { cards: _cards, shares, user, ...rest } = p;
@@ -237,7 +267,17 @@ export async function listProjects(
 
 export type CardSummary = Pick<
   Card,
-  "id" | "projectId" | "lane" | "order" | "title" | "createdAt" | "updatedAt" | "dueAt" | "expires"
+  | "id"
+  | "projectId"
+  | "lane"
+  | "order"
+  | "title"
+  | "createdAt"
+  | "updatedAt"
+  | "dueAt"
+  | "expires"
+  | "failedAt"
+  | "rescuedAt"
 > & { tags: TagChip[] };
 
 export async function listCards(
@@ -286,6 +326,8 @@ export async function listCards(
       updatedAt: true,
       dueAt: true,
       expires: true,
+      failedAt: true,
+      rescuedAt: true,
       tags: { include: { tag: true } },
     },
   });
