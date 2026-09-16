@@ -82,6 +82,20 @@
   letter-spacing: 0.08em;
 }
 
+.laneHeaderCount {
+  margin-left: 4px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  opacity: 0.65;
+}
+
+.laneHeaderCollapsed .laneHeaderCount {
+  display: block;
+  margin-left: 0;
+  margin-top: 6px;
+}
+
 .projectCell {
   display: flex;
   align-items: center;
@@ -306,6 +320,21 @@
    thin strip so the column is still visually present. */
 .laneCellColCollapsed {
   background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.laneCellCollapsedCount {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.laneCellCollapsedCountFailed {
+  color: var(--danger);
 }
 
 .laneEmpty {
@@ -731,6 +760,19 @@
     color: var(--text-dim);
     background: transparent;
     border-style: dashed;
+  }
+
+  .mobileLaneCount {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 14px;
+    margin-left: 4px;
+    padding: 0 4px;
+    font-size: 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 18%, transparent);
+    color: inherit;
   }
 
   .mobileCollapseAllBtn {

@@ -65,6 +65,9 @@ const LANE_LABELS: Record<LaneKey, string> = {
 
 type ViewState = "collapsed" | "minimized" | "expanded";
 
+const DEFAULT_COLLAPSED_LANES: LaneKey[] = ["DONE", "FAILED"];
+const COLLAPSED_LANES_STORAGE_KEY = "overboard.collapsedLanes";
+
 export type ClientTag = { id: string; name: string; color: string };
 
 export type ClientCard = {
@@ -150,7 +153,45 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
   const [shareProjectId, setShareProjectId] = useState<string | null>(null);
   // viewStates is per-project; default is "minimized" (apply lazily via getViewState).
   const [viewStates, setViewStates] = useState<Record<string, ViewState>>({});
-  const [collapsedLanes, setCollapsedLanes] = useState<Set<LaneKey>>(new Set());
+  const [collapsedLanes, setCollapsedLanes] = useState<Set<LaneKey>>(
+    () => new Set(DEFAULT_COLLAPSED_LANES),
+  );
+  // Once localStorage has been read (or the read failed), further changes to
+  // collapsedLanes should persist. Skipping writes until then avoids
+  // clobbering a stored value with the default before hydration runs.
+  const hasHydratedLanesRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COLLAPSED_LANES_STORAGE_KEY);
+      if (raw) {
+        const parsed: unknown = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter(
+            (l): l is LaneKey => typeof l === "string" && (LANES as readonly string[]).includes(l),
+          );
+          // One-time sync from an external store (localStorage) on mount.
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setCollapsedLanes(new Set(valid));
+        }
+      }
+    } catch {
+      // Invalid JSON or storage inaccessible (private mode, disabled, etc.) —
+      // fall back to the default collapsed set.
+    } finally {
+      hasHydratedLanesRef.current = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedLanesRef.current) return;
+    try {
+      localStorage.setItem(COLLAPSED_LANES_STORAGE_KEY, JSON.stringify([...collapsedLanes]));
+    } catch {
+      // Storage write can fail (quota, private mode); collapse state just
+      // won't persist for this session.
+    }
+  }, [collapsedLanes]);
 
   useEffect(() => {
     setLocalProjects(projects);
@@ -230,6 +271,24 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
       })
       .filter((p): p is ClientProject => p !== null);
   }, [filterActive, tagFilter, localProjects]);
+
+  // Card counts per lane, reflecting the active tag filter (mirrors
+  // displayProjects so collapsed-lane counts don't lie when filtered).
+  const laneCounts = useMemo(() => {
+    const counts: Record<LaneKey, number> = {
+      BACKLOG: 0,
+      TODO: 0,
+      DOING: 0,
+      DONE: 0,
+      FAILED: 0,
+    };
+    for (const p of displayProjects) {
+      for (const lane of LANES) {
+        counts[lane] += p.lanes[lane].length;
+      }
+    }
+    return counts;
+  }, [displayProjects]);
 
   const getViewState = (projectId: string): ViewState =>
     viewStates[projectId] ?? "minimized";
@@ -384,6 +443,7 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
               aria-pressed={isCollapsed}
             >
               {LANE_LABELS[lane]}
+              <span className={styles.mobileLaneCount}>{laneCounts[lane]}</span>
             </button>
           );
         })}
@@ -447,6 +507,9 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
                   }
                 >
                   {LANE_LABELS[lane]}
+                  <span className={styles.laneHeaderCount}>
+                    {isCollapsed ? laneCounts[lane] : `· ${laneCounts[lane]}`}
+                  </span>
                 </button>
               );
             })}
@@ -813,7 +876,6 @@ function LaneCell({
   const isDone = lane === "DONE";
   const isRowCollapsed = viewState === "collapsed";
   const isMinimized = viewState === "minimized";
-  const hideContent = isRowCollapsed || isLaneCollapsed;
 
   const cellClass = [
     styles.laneCell,
@@ -829,7 +891,16 @@ function LaneCell({
 
   return (
     <div ref={droppable.setNodeRef} className={cellClass}>
-      {hideContent ? null : (
+      {!isRowCollapsed && isLaneCollapsed && cards.length > 0 ? (
+        <span
+          className={`${styles.laneCellCollapsedCount} ${
+            isFailed ? styles.laneCellCollapsedCountFailed : ""
+          }`}
+        >
+          {cards.length}
+        </span>
+      ) : null}
+      {isRowCollapsed || isLaneCollapsed ? null : (
         <div className={styles.laneInner}>
           <span className={styles.laneMobileLabel} aria-hidden>
             {LANE_LABELS[lane]} · {cards.length}
