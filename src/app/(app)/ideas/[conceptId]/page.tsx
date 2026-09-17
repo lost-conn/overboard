@@ -2,7 +2,11 @@ import { notFound, redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { getIdea } from "@/lib/ideas";
 import { listTags } from "@/lib/tags";
-import { getConceptDecomposition, getVocabulary } from "@/lib/concepts/decomposition";
+import {
+  getConceptDecomposition,
+  getOverlapPartners,
+  getVocabulary,
+} from "@/lib/concepts/decomposition";
 import { NotFoundError } from "@/lib/errors";
 import { ConceptBoard } from "./ConceptBoard";
 import styles from "./concept.module.css";
@@ -26,13 +30,14 @@ export default async function ConceptPage({
       getConceptDecomposition(user.id, conceptId),
       getVocabulary(user.id),
       listTags(user.id),
+      getOverlapPartners(user.id, conceptId),
     ]);
   } catch (err) {
     if (err instanceof NotFoundError) notFound();
     throw err;
   }
 
-  const [idea, decomposition, vocabulary, allTags] = data;
+  const [idea, decomposition, vocabulary, allTags, partners] = data;
 
   return (
     <main className={styles.page}>
@@ -44,6 +49,7 @@ export default async function ConceptPage({
         allTags={allTags}
         decomposition={decomposition}
         vocabulary={vocabulary}
+        partners={partners}
       />
     </main>
   );

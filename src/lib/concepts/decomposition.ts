@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { NotFoundError } from "@/lib/errors";
 import { deriveTagColor } from "@/lib/tags/color";
 import type { ConceptRef } from "./components";
+import { overlapsForConcept, type OverlapConcept } from "./overlap";
 
 // Everything the concept board needs to render, in a fixed number of queries
 // regardless of how many axes or components a concept has.
@@ -271,6 +272,63 @@ export async function getPoolDecomposition(userId: string): Promise<PoolConcept[
       gapCount: axes.filter((a) => a.components.length === 0).length,
     };
   });
+}
+
+/* ---- overlap ------------------------------------------------------------- */
+
+export type OverlapPartner = {
+  id: string;
+  title: string;
+  /** Names of the components both concepts carry. */
+  sharedNames: string[];
+  shared: number;
+  /** How many components this concept has, for "3 of 4" phrasing. */
+  ownTotal: number;
+  /** What the partner has that this concept lacks — the useful half. */
+  missingNames: string[];
+};
+
+/**
+ * Overlap partners for one concept. Two small queries rather than the full
+ * pool decomposition, since the concept board only needs ids and titles to
+ * rank, plus names to render.
+ */
+export async function getOverlapPartners(
+  userId: string,
+  ideaId: string,
+): Promise<OverlapPartner[]> {
+  const [ideas, attachments] = await Promise.all([
+    db.idea.findMany({ where: { userId }, select: { id: true, title: true } }),
+    db.conceptComponent.findMany({
+      where: { idea: { userId }, component: { userId } },
+      select: { ideaId: true, component: { select: { id: true, name: true } } },
+    }),
+  ]);
+
+  const names = new Map<string, string>();
+  const byIdea = new Map<string, string[]>();
+  for (const a of attachments) {
+    names.set(a.component.id, a.component.name);
+    const list = byIdea.get(a.ideaId) ?? [];
+    list.push(a.component.id);
+    byIdea.set(a.ideaId, list);
+  }
+
+  const concepts: OverlapConcept[] = ideas.map((i) => ({
+    id: i.id,
+    title: i.title,
+    componentIds: byIdea.get(i.id) ?? [],
+  }));
+
+  const label = (id: string) => names.get(id) ?? id;
+  return overlapsForConcept(ideaId, concepts).map((o) => ({
+    id: o.other.id,
+    title: o.other.title,
+    sharedNames: o.sharedIds.map(label).sort(),
+    shared: o.shared,
+    ownTotal: o.ownTotal,
+    missingNames: o.missingIds.map(label).sort(),
+  }));
 }
 
 export type VocabularyEntry = {

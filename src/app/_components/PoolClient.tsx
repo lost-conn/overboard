@@ -22,7 +22,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, LayoutGrid, Library, Pin, Plus, Search, X } from "lucide-react";
+import { GripVertical, LayoutGrid, Library, Link2, Pin, Plus, Search, X } from "lucide-react";
 import type { PoolConcept, VocabularyEntry } from "@/lib/concepts/decomposition";
 import {
   POOL_SORTS,
@@ -33,6 +33,7 @@ import {
   type PoolSort,
   type VocabularyMatchMode,
 } from "@/lib/concepts/pool";
+import { findOverlapPairs } from "@/lib/concepts/overlap";
 import { createIdeaAction, deleteIdeaAction, reorderIdeasAction } from "@/lib/actions/ideas";
 import { TagChip, TagChipOverflow } from "./TagChip";
 import {
@@ -69,6 +70,7 @@ export function PoolClient({
   // — you can move the mouse away and the highlight survives.
   const [pinned, setPinned] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
+  const [showPairs, setShowPairs] = useState(false);
   const highlighted = pinned ?? hovered;
 
   useEffect(() => setLocal(concepts), [concepts]);
@@ -125,6 +127,12 @@ export function PoolClient({
     mode === "workbench" && sort === "manual" && !filterActive && query.trim().length === 0;
 
   const displayed = useMemo(() => sortPool(visible, sort), [visible, sort]);
+
+  // Pairs are computed over the whole pool, not the filtered view: "what
+  // completes what" is a property of the pool, and hiding pairs because of an
+  // unrelated tag filter would be actively misleading.
+  const pairs = useMemo(() => findOverlapPairs(local), [local]);
+  const pairCount = pairs.length;
 
   const handleDragEnd = (e: DragEndEvent) => {
     setActiveId(null);
@@ -206,6 +214,17 @@ export function PoolClient({
           </label>
         ) : null}
 
+        <button
+          type="button"
+          className={`${styles.pairsBtn} ${showPairs ? styles.pairsBtnOn : ""}`}
+          aria-pressed={showPairs}
+          aria-expanded={showPairs}
+          onClick={() => setShowPairs((v) => !v)}
+        >
+          <Link2 size={14} aria-hidden /> Completes each other
+          {pairCount > 0 ? <span className={styles.pairsCount}>{pairCount}</span> : null}
+        </button>
+
         <NewConceptButton open={adding} setOpen={setAdding} />
 
         <span className={styles.count}>
@@ -225,6 +244,8 @@ export function PoolClient({
           </button>
         </div>
       ) : null}
+
+      {showPairs ? <PairsPanel pairs={pairs} nameById={nameById} /> : null}
 
       {local.length === 0 && !adding ? (
         <EmptyPool />
@@ -264,6 +285,78 @@ export function PoolClient({
       ) : (
         <VocabularyView concepts={displayed} vocabulary={vocabulary} />
       )}
+    </div>
+  );
+}
+
+/* ---- pool-wide pairs ----------------------------------------------------- */
+
+/**
+ * The ranked list of pairs. Not "similar" or "related" — those undersell it.
+ * The interesting pairs aren't duplicates, they're an idea plus the pieces it
+ * was missing, so each row leads with the overlap and then names what each
+ * side brings that the other doesn't.
+ */
+function PairsPanel({
+  pairs,
+  nameById,
+}: {
+  pairs: ReturnType<typeof findOverlapPairs>;
+  nameById: Map<string, string>;
+}) {
+  const label = (ids: string[]) =>
+    ids.map((id) => nameById.get(id) ?? id).sort().join(" · ");
+
+  if (pairs.length === 0) {
+    return (
+      <div className={styles.pairsPanel}>
+        <p className={styles.pairsEmpty}>
+          No pair shares two or more components yet. One shared component is noise; two is
+          where it starts to mean something. Break a couple more concepts down and they will
+          start finding each other here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.pairsPanel}>
+      <ul className={styles.pairsList}>
+        {pairs.map((p) => (
+          <li className={styles.pair} key={`${p.a.id}:${p.b.id}`}>
+            <div className={styles.pairHead}>
+              <Link href={`/ideas/${p.a.id}`} className={styles.pairTitle}>
+                {p.a.title}
+              </Link>
+              <span className={styles.pairJoin}>completes</span>
+              <Link href={`/ideas/${p.b.id}`} className={styles.pairTitle}>
+                {p.b.title}
+              </Link>
+              <span className={styles.pairCount}>
+                {p.shared} shared
+              </span>
+            </div>
+
+            <div className={styles.pairSets}>
+              <span className={styles.pairSet}>
+                <span className={styles.pairSetLabel}>Both</span> {label(p.sharedIds)}
+              </span>
+              {p.aOnlyIds.length > 0 ? (
+                <span className={styles.pairSet}>
+                  <span className={styles.pairSetLabelAdds}>{p.a.title} adds</span>{" "}
+                  {label(p.aOnlyIds)}
+                </span>
+              ) : null}
+              {p.bOnlyIds.length > 0 ? (
+                <span className={styles.pairSet}>
+                  <span className={styles.pairSetLabelAdds}>{p.b.title} adds</span>{" "}
+                  {label(p.bOnlyIds)}
+                </span>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

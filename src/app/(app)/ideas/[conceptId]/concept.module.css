@@ -771,6 +771,82 @@
   line-height: 1.6;
 }
 
+/* ---- overlap ------------------------------------------------------------ */
+
+.overlap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: color-mix(in srgb, var(--accent) 5%, var(--elev-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--radius);
+}
+
+.overlapList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.overlapItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.overlapHead {
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+
+.overlapLink {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.overlapLink:hover {
+  text-decoration: underline;
+}
+
+.overlapSets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.overlapSet {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.overlapSetLabel,
+.overlapSetLabelAdds {
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+/* The complement is the actionable half, so it gets the accent rather than
+   the same grey as the intersection. */
+.overlapSetLabelAdds {
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.overlapNames {
+  font-size: var(--fs-sm);
+  color: var(--text);
+  line-height: 1.5;
+}
+
 .editorWrap {
   position: relative;
   background: var(--elev-2);

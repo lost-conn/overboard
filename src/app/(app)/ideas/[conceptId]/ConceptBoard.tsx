@@ -8,6 +8,7 @@ import type {
   ConceptDecomposition,
   ConceptAxisRow,
   ComponentChip,
+  OverlapPartner,
   VocabularyEntry,
 } from "@/lib/concepts/decomposition";
 import {
@@ -41,6 +42,7 @@ type Props = {
   allTags: ClientTag[];
   decomposition: ConceptDecomposition;
   vocabulary: VocabularyEntry[];
+  partners: OverlapPartner[];
 };
 
 export function ConceptBoard({
@@ -51,6 +53,7 @@ export function ConceptBoard({
   allTags,
   decomposition,
   vocabulary,
+  partners,
 }: Props) {
   const [payoff, setPayoff] = useState<string | null>(null);
 
@@ -123,6 +126,8 @@ export function ConceptBoard({
           <p className={styles.payoff} role="status" aria-live="polite">
             {payoff ?? ""}
           </p>
+
+          <OverlapPanel partners={partners} />
         </section>
 
         <section className={styles.notes} aria-label="Notes">
@@ -131,6 +136,64 @@ export function ConceptBoard({
         </section>
       </div>
     </>
+  );
+}
+
+/* ---- overlap ------------------------------------------------------------ */
+
+/**
+ * "These complete each other", stated unprompted.
+ *
+ * The complement is given as much room as the intersection: knowing that two
+ * concepts share three components is mildly interesting, but knowing what the
+ * other one has that this one is missing is the part that suggests what to do
+ * next.
+ */
+function OverlapPanel({ partners }: { partners: OverlapPartner[] }) {
+  if (partners.length === 0) return null;
+
+  return (
+    <section className={styles.overlap} aria-label="Concepts that complete this one">
+      <h2 className={styles.sectionTitle}>Completes each other</h2>
+
+      <ul className={styles.overlapList}>
+        {partners.map((p) => (
+          <li className={styles.overlapItem} key={p.id}>
+            <p className={styles.overlapHead}>
+              Shares <strong>{p.shared}</strong> of {p.ownTotal} component
+              {p.ownTotal === 1 ? "" : "s"} with{" "}
+              <Link href={`/ideas/${p.id}`} className={styles.overlapLink}>
+                {p.title}
+              </Link>
+              .
+            </p>
+
+            <div className={styles.overlapSets}>
+              <div className={styles.overlapSet}>
+                <span className={styles.overlapSetLabel}>Both</span>
+                <span className={styles.overlapNames}>{p.sharedNames.join(" · ")}</span>
+              </div>
+
+              {p.missingNames.length > 0 ? (
+                <div className={styles.overlapSet}>
+                  <span className={styles.overlapSetLabelAdds}>
+                    {p.title} also has
+                  </span>
+                  <span className={styles.overlapNames}>{p.missingNames.join(" · ")}</span>
+                </div>
+              ) : (
+                <div className={styles.overlapSet}>
+                  <span className={styles.overlapSetLabel}>Adds nothing new</span>
+                  <span className={styles.overlapNames}>
+                    everything it has, this one already has
+                  </span>
+                </div>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

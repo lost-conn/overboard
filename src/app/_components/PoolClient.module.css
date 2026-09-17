@@ -201,6 +201,138 @@
   border-color: var(--accent);
 }
 
+/* ---- completes each other ------------------------------------------------ */
+
+.pairsBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: color var(--t-base) var(--ease), border-color var(--t-base) var(--ease),
+    background var(--t-base) var(--ease);
+}
+
+.pairsBtn:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.pairsBtnOn {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.pairsCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--s-1);
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--surface);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.pairsPanel {
+  padding: var(--s-3);
+  background: color-mix(in srgb, var(--accent) 5%, var(--elev-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--radius);
+}
+
+.pairsEmpty {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.pairsList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.pair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.pair:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.pairHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.pairTitle {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.pairTitle:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.pairJoin {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.pairCount {
+  margin-left: auto;
+  font-size: var(--fs-label);
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pairSets {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pairSet {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.pairSetLabel {
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* The complement is the actionable half. */
+.pairSetLabelAdds {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ---- workbench grid ----------------------------------------------------- */
 
 .grid {
@@ -651,6 +783,8 @@
   .modeBtn,
   .matchBtn,
   .newBtn,
+  .pairsBtn,
+  .pairTitle,
   .vocabItem,
   .vocabClear,
   .pinClear,
@@ -678,7 +812,8 @@
   }
 
   .cardTitle,
-  .vocabConceptOpen {
+  .vocabConceptOpen,
+  .pairTitle {
     display: inline-flex;
     align-items: center;
   }
