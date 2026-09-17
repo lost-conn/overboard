@@ -32,6 +32,9 @@ export default async function TokensPage() {
           <Link className={styles.back} href="/settings/board">
             Board settings
           </Link>
+          <Link className={styles.back} href="/settings/classes">
+            Classes
+          </Link>
           <Link className={styles.back} href="/">
             ← Board
           </Link>

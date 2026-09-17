@@ -8,7 +8,7 @@
   display: grid;
   /* grid-template-columns is set inline by BoardClient so lane collapses
      can change column widths at runtime. */
-  grid-template-columns: 220px repeat(5, minmax(160px, 1fr));
+  grid-template-columns: 260px repeat(5, minmax(160px, 1fr));
   gap: 8px;
 }
 
@@ -498,6 +498,82 @@
   padding: 12px 24px 0;
 }
 
+.inactiveBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px 0;
+}
+
+.inactiveBarText {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.inactiveBarBtn {
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 999px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.inactiveBarBtn:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: var(--accent);
+}
+
+.scheduleRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.scheduleSelect {
+  max-width: 100%;
+  min-width: 0;
+  padding: 1px 2px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  outline: none;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.projectCell:hover .scheduleSelect {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.scheduleSelect:focus {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--bg);
+}
+
+.projectInactiveBadge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--text-dim) 16%, transparent);
+  border-radius: 999px;
+}
+
+.projectRowInactive {
+  opacity: 0.5;
+}
+
 .card:hover {
   border-color: var(--text-dim);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
@@ -732,6 +808,10 @@
 
   .filterBarSlot {
     padding: 10px 12px 0;
+  }
+
+  .inactiveBar {
+    padding: 8px 12px 0;
   }
 
   .mobileLaneBar {

@@ -6,6 +6,7 @@ import { Lane } from "@/generated/prisma/enums";
 import * as boardQ from "@/lib/board/queries";
 import * as boardM from "@/lib/board/mutations";
 import * as sharing from "@/lib/board/sharing";
+import * as classesLib from "@/lib/board/classes";
 import * as ideasQ from "@/lib/ideas/queries";
 import * as ideasM from "@/lib/ideas/mutations";
 import * as tagsQ from "@/lib/tags/queries";
@@ -165,7 +166,8 @@ const whoami: Tool = {
 
 const listProjects: Tool = {
   name: "list_projects",
-  description: "List the user's projects (kanban board rows). Excludes archived unless requested.",
+  description:
+    "List the user's projects (kanban board rows). Excludes archived unless requested. Each entry includes scheduleMode (ALWAYS/NEVER/CLASS), classId (set when mode is CLASS), and activeNow (whether the project's schedule currently marks it active, evaluated at call time) — see list_classes/set_project_schedule.",
   inputSchema: {
     type: "object",
     properties: {
@@ -810,6 +812,135 @@ const assignCard: Tool = {
   },
 };
 
+const WINDOW_SCHEMA: JsonSchema = {
+  type: "object",
+  description:
+    "A recurring hour range within a class. Weekly: { kind: \"weekly\", weekdays: number[] (0=Sun..6=Sat, non-empty, no duplicates), startHour: integer 0-23, endHour: integer 1-24 }. Monthly: { kind: \"monthly\", ordinal: 1|2|3|4|-1 (the nth occurrence of `weekday` in the month; -1 = last), weekday: integer 0-6, startHour: integer 0-23, endHour: integer 1-24 }. When startHour > endHour the window wraps past midnight (e.g. startHour 22, endHour 2 covers 22:00 through 02:00 the next day). endHour 24 means \"through the end of the day\".",
+  oneOf: [
+    {
+      type: "object",
+      properties: {
+        kind: { const: "weekly" },
+        weekdays: { type: "array", items: { type: "integer", minimum: 0, maximum: 6 } },
+        startHour: { type: "integer", minimum: 0, maximum: 23 },
+        endHour: { type: "integer", minimum: 1, maximum: 24 },
+      },
+      required: ["kind", "weekdays", "startHour", "endHour"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { const: "monthly" },
+        ordinal: { type: "integer", enum: [1, 2, 3, 4, -1] },
+        weekday: { type: "integer", minimum: 0, maximum: 6 },
+        startHour: { type: "integer", minimum: 0, maximum: 23 },
+        endHour: { type: "integer", minimum: 1, maximum: 24 },
+      },
+      required: ["kind", "ordinal", "weekday", "startHour", "endHour"],
+      additionalProperties: false,
+    },
+  ],
+};
+
+const listClassesTool: Tool = {
+  name: "list_classes",
+  description:
+    "List the user's schedule classes (reusable named hour-of-week schedules used to mark a project active/inactive). Each entry includes a projectCount of how many of the user's projects/shares currently use it. Built-in ALWAYS/NEVER modes are virtual and not listed here — only CLASS-mode schedules are stored classes.",
+  inputSchema: EMPTY_OBJECT_SCHEMA,
+  handler: async (ctx) => ({ classes: await classesLib.listClasses(ctx.userId) }),
+};
+
+const createClassTool: Tool = {
+  name: "create_class",
+  description:
+    "Create a reusable schedule class. `windows` is an array of hour ranges (see schema); the class is active whenever now falls inside any window, evaluated in `tz`. `tz` defaults to \"UTC\" if omitted.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      name: { type: "string", maxLength: 60 },
+      tz: { type: "string", description: "IANA timezone, e.g. \"America/Chicago\". Defaults to \"UTC\" if omitted." },
+      windows: { type: "array", items: WINDOW_SCHEMA },
+    },
+    required: ["name", "windows"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    const tz = optionalString(rec, "tz") ?? "UTC";
+    return classesLib.createClass(ctx.userId, {
+      name: requireString(rec, "name", 60),
+      tz,
+      windows: rec.windows,
+    });
+  },
+};
+
+const updateClassTool: Tool = {
+  name: "update_class",
+  description: "Update a schedule class's name, timezone, and/or windows. Omit a field to leave it unchanged.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      name: { type: "string", maxLength: 60 },
+      tz: { type: "string", description: "IANA timezone, e.g. \"America/Chicago\"." },
+      windows: { type: "array", items: WINDOW_SCHEMA },
+    },
+    required: ["id"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    return classesLib.updateClass(ctx.userId, requireString(rec, "id"), {
+      name: optionalString(rec, "name", 60),
+      tz: optionalString(rec, "tz"),
+      windows: rec.windows === undefined ? undefined : rec.windows,
+    });
+  },
+};
+
+const deleteClassTool: Tool = {
+  name: "delete_class",
+  description:
+    "Delete a schedule class. Any of the user's projects/shares currently assigned to it revert to ALWAYS (mode) with no class first.",
+  inputSchema: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    await classesLib.deleteClass(ctx.userId, requireString(rec, "id"));
+    return { deleted: true };
+  },
+};
+
+const setProjectSchedule: Tool = {
+  name: "set_project_schedule",
+  description:
+    "Set a project's schedule mode from your own point of view (mirrors set_project_priority: for a shared project this only changes your own view, not the owner's or other viewers'). mode is one of ALWAYS (\"Omnipresent\", always active), NEVER (\"Out of mind\", never active), or CLASS (active per a schedule class you own — classId is required in that case).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: { type: "string" },
+      mode: { type: "string", enum: ["ALWAYS", "NEVER", "CLASS"] },
+      classId: { type: "string", description: "Required when mode is CLASS. Must be a class you own." },
+    },
+    required: ["projectId", "mode"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    await classesLib.setProjectSchedule(ctx.userId, requireString(rec, "projectId"), {
+      mode: requireString(rec, "mode"),
+      classId: optionalString(rec, "classId"),
+    });
+    return { ok: true };
+  },
+};
+
 export const TOOLS: Tool[] = [
   whoami,
   listProjects,
@@ -840,6 +971,11 @@ export const TOOLS: Tool[] = [
   listProjectShares,
   setPinnedToBoard,
   assignCard,
+  listClassesTool,
+  createClassTool,
+  updateClassTool,
+  deleteClassTool,
+  setProjectSchedule,
 ];
 
 export function findTool(name: string): Tool | undefined {

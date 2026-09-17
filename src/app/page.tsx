@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { getBoardForUser, getProjectParticipants, type ProjectRow } from "@/lib/board";
+import { listClasses } from "@/lib/board/classes";
 import { listTags } from "@/lib/tags";
 import { Lane } from "@/generated/prisma/enums";
 import { parseRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
@@ -14,9 +15,11 @@ export default async function Home() {
   const user = await currentUser();
   if (!user) redirect("/login");
 
-  const [projects, allTags] = await Promise.all([
+  const serverNow = new Date().toISOString();
+  const [projects, allTags, classes] = await Promise.all([
     getBoardForUser(user.id),
     listTags(user.id),
+    listClasses(user.id),
   ]);
   const clientProjects = projects.map((p) => toClientProject(p, user.id));
 
@@ -82,6 +85,9 @@ export default async function Home() {
           <Link className={styles.navLink} href="/settings/board">
             Settings
           </Link>
+          <Link className={styles.navLink} href="/settings/classes">
+            Classes
+          </Link>
           <form action={logoutAction}>
             <button className={styles.iconBtn} type="submit">
               Sign out
@@ -100,6 +106,8 @@ export default async function Home() {
           tagsByOwner={tagsByOwner}
           currentUserId={user.id}
           participantsByProject={participantsByProject}
+          classes={classes.map((c) => ({ id: c.id, name: c.name }))}
+          serverNow={serverNow}
         />
       )}
     </main>
@@ -139,6 +147,9 @@ function toClientProject(p: ProjectRow, currentUserId: string): ClientProject {
     isOwner: p.isOwner,
     ownerId: p.isOwner ? currentUserId : p.userId,
     ownerEmail: p.ownerEmail,
+    scheduleMode: p.scheduleMode,
+    classId: p.classId,
+    schedule: p.schedule,
   };
 }
 

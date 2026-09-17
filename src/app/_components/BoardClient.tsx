@@ -38,6 +38,7 @@ import {
 import { setCardTagsAction } from "@/lib/actions/tags";
 import { assignCardAction, setPinnedToBoardAction } from "@/lib/actions/sharing";
 import { rescueCardAction } from "@/lib/actions/board";
+import { setProjectScheduleAction } from "@/lib/actions/classes";
 import { CardDrawer, type DrawerCard } from "./CardDrawer";
 import { ShareDialog } from "./ShareDialog";
 import { TagChip, TagChipOverflow } from "./TagChip";
@@ -50,6 +51,13 @@ import {
 import { useBoardEvents } from "./useBoardEvents";
 import { describeDue, type DueTier } from "@/lib/board/due";
 import { describeRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
+import {
+  isProjectActive,
+  nextHourBoundary,
+  SCHEDULE_MODE_LABELS,
+  type ClassSchedule,
+  type ScheduleMode,
+} from "@/lib/board/schedule";
 import styles from "./BoardClient.module.css";
 
 const LANES = ["BACKLOG", "TODO", "DOING", "DONE", "FAILED"] as const;
@@ -67,6 +75,7 @@ type ViewState = "collapsed" | "minimized" | "expanded";
 
 const DEFAULT_COLLAPSED_LANES: LaneKey[] = ["DONE", "FAILED"];
 const COLLAPSED_LANES_STORAGE_KEY = "overboard.collapsedLanes";
+const SHOW_INACTIVE_STORAGE_KEY = "overboard.showInactive";
 
 export type ClientTag = { id: string; name: string; color: string };
 
@@ -95,7 +104,12 @@ export type ClientProject = {
   ownerId: string;
   ownerEmail?: string;
   pinnedToBoard?: boolean;
+  scheduleMode: ScheduleMode;
+  classId: string | null;
+  schedule: ClassSchedule | null;
 };
+
+export type ClientClass = { id: string; name: string };
 
 type DragData =
   | { type: "card"; cardId: string; projectId: string; lane: LaneKey }
@@ -110,6 +124,8 @@ type Props = {
   tagsByOwner?: Record<string, ClientTag[]>;
   currentUserId: string;
   participantsByProject?: Record<string, Participant[]>;
+  classes: ClientClass[];
+  serverNow: string;
 };
 
 function laneDroppableId(projectId: string, lane: LaneKey): string {
@@ -124,6 +140,37 @@ function useNow(intervalMs = 60_000): Date {
     const id = setInterval(() => setNow(new Date()), intervalMs);
     return () => clearInterval(id);
   }, [intervalMs]);
+  return now;
+}
+
+// Ticks at each hour boundary so schedule-class activity (activeById) stays
+// current without a server round trip. Starts from `serverNow` (passed from
+// the page render) to avoid a hydration mismatch, then switches to the
+// client's own clock right after mount.
+function useHourTick(serverNow: string): Date {
+  const [now, setNow] = useState(() => new Date(serverNow));
+
+  useEffect(() => {
+    // One-time sync from the server-rendered instant to the client's actual
+    // clock, now that we're past hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNow(new Date());
+  }, []);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const arm = () => {
+      const boundary = nextHourBoundary(new Date());
+      const delay = Math.max(0, boundary.getTime() - Date.now());
+      timer = setTimeout(() => {
+        setNow(new Date());
+        arm();
+      }, delay);
+    };
+    arm();
+    return () => clearTimeout(timer);
+  }, []);
+
   return now;
 }
 
@@ -142,9 +189,19 @@ const kanbanCollision: CollisionDetection = (args) => {
   return closestCorners(args);
 };
 
-export function BoardClient({ projects, allTags, filterTags, tagsByOwner, currentUserId, participantsByProject }: Props) {
+export function BoardClient({
+  projects,
+  allTags,
+  filterTags,
+  tagsByOwner,
+  currentUserId,
+  participantsByProject,
+  classes,
+  serverNow,
+}: Props) {
   const router = useRouter();
   const now = useNow();
+  const scheduleNow = useHourTick(serverNow);
   const tagFilter = useTagFilter();
   const filterActive = tagFilterActive(tagFilter);
   const [localProjects, setLocalProjects] = useState<ClientProject[]>(projects);
@@ -156,10 +213,12 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
   const [collapsedLanes, setCollapsedLanes] = useState<Set<LaneKey>>(
     () => new Set(DEFAULT_COLLAPSED_LANES),
   );
+  const [showInactive, setShowInactive] = useState(false);
   // Once localStorage has been read (or the read failed), further changes to
   // collapsedLanes should persist. Skipping writes until then avoids
   // clobbering a stored value with the default before hydration runs.
   const hasHydratedLanesRef = useRef(false);
+  const hasHydratedShowInactiveRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -192,6 +251,31 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
       // won't persist for this session.
     }
   }, [collapsedLanes]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SHOW_INACTIVE_STORAGE_KEY);
+      if (raw !== null) {
+        // One-time sync from an external store (localStorage) on mount.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setShowInactive(raw === "true");
+      }
+    } catch {
+      // Invalid/inaccessible storage — fall back to the default (false).
+    } finally {
+      hasHydratedShowInactiveRef.current = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedShowInactiveRef.current) return;
+    try {
+      localStorage.setItem(SHOW_INACTIVE_STORAGE_KEY, String(showInactive));
+    } catch {
+      // Storage write can fail (quota, private mode); preference just won't
+      // persist for this session.
+    }
+  }, [showInactive]);
 
   useEffect(() => {
     setLocalProjects(projects);
@@ -248,7 +332,7 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
 
   const projectIds = useMemo(() => localProjects.map((p) => p.id), [localProjects]);
 
-  const displayProjects = useMemo(() => {
+  const tagFilteredProjects = useMemo(() => {
     if (!filterActive) return localProjects;
     return localProjects
       .map((p) => {
@@ -271,6 +355,27 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
       })
       .filter((p): p is ClientProject => p !== null);
   }, [filterActive, tagFilter, localProjects]);
+
+  // Recomputed from localProjects (which mirrors the projects prop) and
+  // scheduleNow (ticks hourly) rather than trusting the server-computed
+  // `activeNow` on ProjectRow, which goes stale after the first hour.
+  const activeById = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const p of localProjects) {
+      map.set(p.id, isProjectActive(p.scheduleMode, p.schedule, scheduleNow));
+    }
+    return map;
+  }, [localProjects, scheduleNow]);
+
+  const inactiveCount = useMemo(
+    () => tagFilteredProjects.filter((p) => !(activeById.get(p.id) ?? true)).length,
+    [tagFilteredProjects, activeById],
+  );
+
+  const displayProjects = useMemo(() => {
+    if (showInactive) return tagFilteredProjects;
+    return tagFilteredProjects.filter((p) => activeById.get(p.id) ?? true);
+  }, [tagFilteredProjects, showInactive, activeById]);
 
   // Card counts per lane, reflecting the active tag filter (mirrors
   // displayProjects so collapsed-lane counts don't lie when filtered).
@@ -325,7 +430,7 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
     const lanes = LANES.map((l) =>
       collapsedLanes.has(l) ? "44px" : "minmax(160px, 1fr)",
     );
-    return ["220px", ...lanes].join(" ");
+    return ["260px", ...lanes].join(" ");
   }, [collapsedLanes]);
 
   const openCard = (project: ClientProject, card: ClientCard) => {
@@ -424,11 +529,66 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
     }
   };
 
+  const handleScheduleChange = (projectId: string, mode: ScheduleMode, classId: string | null) => {
+    setLocalProjects((prev) =>
+      prev.map((p) =>
+        p.id === projectId
+          ? {
+              ...p,
+              scheduleMode: mode,
+              classId: mode === "CLASS" ? classId : null,
+              // The full class schedule (tz + windows) isn't available
+              // client-side (only id/name are passed in `classes`); clearing
+              // it here is fine — the board's SSE-driven refresh replaces
+              // localProjects with server-accurate data moments later, and
+              // isProjectActive defensively treats a null CLASS schedule as
+              // active in the meantime.
+              schedule: null,
+            }
+          : p,
+      ),
+    );
+    void setProjectScheduleAction({
+      projectId,
+      mode,
+      classId: mode === "CLASS" ? (classId ?? undefined) : undefined,
+    });
+  };
+
   return (
     <>
       {filterTags.length > 0 ? (
         <div className={styles.filterBarSlot}>
           <TagFilterBar allTags={filterTags} />
+        </div>
+      ) : null}
+      {inactiveCount > 0 ? (
+        <div className={styles.inactiveBar}>
+          {showInactive ? (
+            <>
+              <span className={styles.inactiveBarText}>
+                Showing {inactiveCount} inactive
+              </span>
+              <button
+                type="button"
+                className={styles.inactiveBarBtn}
+                onClick={() => setShowInactive(false)}
+              >
+                Hide
+              </button>
+            </>
+          ) : (
+            <>
+              <span className={styles.inactiveBarText}>{inactiveCount} hidden</span>
+              <button
+                type="button"
+                className={styles.inactiveBarBtn}
+                onClick={() => setShowInactive(true)}
+              >
+                Show all
+              </button>
+            </>
+          )}
         </div>
       ) : null}
       <div className={styles.mobileLaneBar} role="group" aria-label="Toggle lanes">
@@ -514,8 +674,19 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
               );
             })}
 
-            {displayProjects.length === 0 ? (
+            {tagFilteredProjects.length === 0 ? (
               <div className={styles.filterEmpty}>No cards match the selected tags.</div>
+            ) : displayProjects.length === 0 ? (
+              <div className={styles.filterEmpty}>
+                All {tagFilteredProjects.length} projects are out of schedule right now.{" "}
+                <button
+                  type="button"
+                  className={styles.inactiveBarBtn}
+                  onClick={() => setShowInactive(true)}
+                >
+                  Show all
+                </button>
+              </div>
             ) : (
               displayProjects.map((project) => (
                 <ProjectRow
@@ -529,6 +700,9 @@ export function BoardClient({ projects, allTags, filterTags, tagsByOwner, curren
                   dndDisabled={filterActive}
                   onShareClick={project.isOwner ? () => setShareProjectId(project.id) : undefined}
                   now={now}
+                  active={activeById.get(project.id) ?? true}
+                  classes={classes}
+                  onScheduleChange={handleScheduleChange}
                 />
               ))
             )}
@@ -608,6 +782,11 @@ function renderDragOverlay(active: DragData | null, projects: ClientProject[]) {
   return null;
 }
 
+function scheduleSelectValue(project: ClientProject): string {
+  if (project.scheduleMode === "CLASS" && project.classId) return `class:${project.classId}`;
+  return project.scheduleMode;
+}
+
 function ProjectRow({
   project,
   viewState,
@@ -618,6 +797,9 @@ function ProjectRow({
   dndDisabled,
   onShareClick,
   now,
+  active,
+  classes,
+  onScheduleChange,
 }: {
   project: ClientProject;
   viewState: ViewState;
@@ -628,9 +810,27 @@ function ProjectRow({
   dndDisabled: boolean;
   onShareClick?: () => void;
   now: Date;
+  active: boolean;
+  classes: ClientClass[];
+  onScheduleChange: (projectId: string, mode: ScheduleMode, classId: string | null) => void;
 }) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const cardCount = Object.values(project.lanes).reduce((n, cs) => n + cs.length, 0);
+
+  const handleScheduleSelect = (raw: string) => {
+    if (raw === "manage") {
+      router.push("/settings/classes");
+      return;
+    }
+    if (raw === "ALWAYS" || raw === "NEVER") {
+      onScheduleChange(project.id, raw, null);
+      return;
+    }
+    if (raw.startsWith("class:")) {
+      onScheduleChange(project.id, "CLASS", raw.slice("class:".length));
+    }
+  };
 
   const handleDeleteProject = () => {
     if (!confirm(`Delete project "${project.name}" and all ${cardCount} card(s)?`)) return;
@@ -680,7 +880,7 @@ function ProjectRow({
           aria-label={`Priority for ${project.name}`}
           title="Lower = higher in list. Algorithm sorts within the same priority."
         />
-        <div className={styles.projectInfo}>
+        <div className={`${styles.projectInfo} ${!active ? styles.projectRowInactive : ""}`}>
           {project.isOwner && renamingName !== null ? (
             <input
               type="text"
@@ -710,6 +910,29 @@ function ProjectRow({
               {project.name}
             </span>
           )}
+          <div className={styles.scheduleRow}>
+            <select
+              className={styles.scheduleSelect}
+              value={scheduleSelectValue(project)}
+              onChange={(e) => handleScheduleSelect(e.target.value)}
+              title="Schedule"
+              aria-label={`Schedule for ${project.name}`}
+            >
+              <option value="ALWAYS">{SCHEDULE_MODE_LABELS.ALWAYS}</option>
+              <option value="NEVER">{SCHEDULE_MODE_LABELS.NEVER}</option>
+              {classes.length > 0 ? (
+                <optgroup label="Classes">
+                  {classes.map((c) => (
+                    <option key={c.id} value={`class:${c.id}`}>
+                      {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              <option value="manage">Manage classes…</option>
+            </select>
+            {!active ? <span className={styles.projectInactiveBadge}>inactive</span> : null}
+          </div>
           {!project.isOwner && project.ownerEmail ? (
             <span className={styles.ownerBadge}>{project.ownerEmail}</span>
           ) : null}
@@ -771,6 +994,7 @@ function ProjectRow({
           onRescue={onRescue}
           dndDisabled={dndDisabled}
           now={now}
+          inactive={!active}
         />
       ))}
     </>
@@ -827,6 +1051,7 @@ function LaneCell({
   onRescue,
   dndDisabled,
   now,
+  inactive,
 }: {
   projectId: string;
   lane: LaneKey;
@@ -837,6 +1062,7 @@ function LaneCell({
   onRescue: (cardId: string) => void;
   dndDisabled: boolean;
   now: Date;
+  inactive: boolean;
 }) {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
@@ -885,6 +1111,7 @@ function LaneCell({
     isRowCollapsed && styles.laneCellRowCollapsed,
     isLaneCollapsed && styles.laneCellColCollapsed,
     droppable.isOver && styles.laneCellOver,
+    inactive && styles.projectRowInactive,
   ]
     .filter(Boolean)
     .join(" ");

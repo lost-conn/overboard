@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { getSharedBoard, getProjectParticipants } from "@/lib/board";
 import type { ProjectRow } from "@/lib/board";
+import { listClasses } from "@/lib/board/classes";
 import { listTags } from "@/lib/tags";
 import { Lane } from "@/generated/prisma/enums";
 import { parseRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
@@ -15,7 +16,11 @@ export default async function SharedPage() {
   const user = await currentUser();
   if (!user) redirect("/login");
 
-  const projects = await getSharedBoard(user.id);
+  const serverNow = new Date().toISOString();
+  const [projects, classes] = await Promise.all([
+    getSharedBoard(user.id),
+    listClasses(user.id),
+  ]);
   const clientProjects = projects.map((p) => toClientProject(p, user.id));
 
   const ownerIds = [...new Set(projects.map((p) => p.userId))];
@@ -91,6 +96,8 @@ export default async function SharedPage() {
           tagsByOwner={tagsByOwner}
           currentUserId={user.id}
           participantsByProject={participantsByProject}
+          classes={classes.map((c) => ({ id: c.id, name: c.name }))}
+          serverNow={serverNow}
         />
       )}
     </main>
@@ -131,6 +138,9 @@ function toClientProject(p: ProjectRow, currentUserId: string): ClientProject {
     ownerId: p.userId,
     ownerEmail: p.ownerEmail,
     pinnedToBoard: p.pinnedToBoard,
+    scheduleMode: p.scheduleMode,
+    classId: p.classId,
+    schedule: p.schedule,
   };
 }
 

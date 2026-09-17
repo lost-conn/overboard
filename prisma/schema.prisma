@@ -18,6 +18,12 @@ enum Lane {
   FAILED
 }
 
+enum ScheduleMode {
+  ALWAYS
+  NEVER
+  CLASS
+}
+
 model User {
   id               String   @id @default(cuid())
   email            String   @unique
@@ -30,8 +36,30 @@ model User {
   ideas          Idea[]
   tokens         Token[]
   tags           Tag[]
+  classes        ProjectClass[]
   sharedProjects ProjectShare[] @relation("sharedProjects")
   assignedCards  Card[]         @relation("assignedCards")
+}
+
+// A reusable named schedule ("class") that marks a project active/inactive by
+// hour. Built-in ALWAYS/NEVER modes are virtual (no row here) — a
+// ProjectClass row only backs ScheduleMode.CLASS. `windows` is a JSON-encoded
+// ScheduleWindow[] (see src/lib/board/schedule.ts for the shape/validation).
+model ProjectClass {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  tz        String // IANA zone
+  windows   String // JSON array of ScheduleWindow
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects Project[]      @relation("projectScheduleClass")
+  shares   ProjectShare[] @relation("shareScheduleClass")
+
+  @@unique([userId, name])
+  @@index([userId])
 }
 
 model Token {
@@ -60,20 +88,24 @@ model Session {
 }
 
 model Project {
-  id        String   @id @default(cuid())
-  userId    String
-  name      String
-  priority  Int      @default(1) // lower = higher in list; can be 0 or negative
-  archived  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String       @id @default(cuid())
+  userId       String
+  name         String
+  priority     Int          @default(1) // lower = higher in list; can be 0 or negative
+  archived     Boolean      @default(false)
+  scheduleMode ScheduleMode @default(ALWAYS)
+  classId      String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class  ProjectClass?  @relation("projectScheduleClass", fields: [classId], references: [id], onDelete: SetNull)
   cards  Card[]
   shares ProjectShare[]
 
   @@index([userId])
   @@index([userId, priority])
+  @@index([classId])
 }
 
 model Card {
@@ -159,17 +191,21 @@ model IdeaTag {
 }
 
 model ProjectShare {
-  id               String   @id @default(cuid())
+  id               String       @id @default(cuid())
   projectId        String
   sharedWithUserId String
-  pinnedToBoard    Boolean  @default(false)
-  priority         Int      @default(1)
-  createdAt        DateTime @default(now())
+  pinnedToBoard    Boolean      @default(false)
+  priority         Int          @default(1)
+  scheduleMode     ScheduleMode @default(ALWAYS)
+  classId          String?
+  createdAt        DateTime     @default(now())
 
-  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sharedWith User    @relation("sharedProjects", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+  project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sharedWith User          @relation("sharedProjects", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+  class      ProjectClass? @relation("shareScheduleClass", fields: [classId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, sharedWithUserId])
   @@index([sharedWithUserId])
   @@index([projectId])
+  @@index([classId])
 }

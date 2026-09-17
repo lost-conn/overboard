@@ -10,7 +10,7 @@ export async function GET() {
 
   const userId = session.userId;
 
-  const [projects, ideas, tags] = await Promise.all([
+  const [projects, ideas, tags, classes] = await Promise.all([
     db.project.findMany({
       where: { userId },
       orderBy: [{ priority: "asc" }, { name: "asc" }],
@@ -30,11 +30,19 @@ export async function GET() {
       where: { userId },
       orderBy: { name: "asc" },
     }),
+    db.projectClass.findMany({
+      where: { userId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, tz: true, windows: true },
+    }),
   ]);
 
   const backup = {
     version: 1,
     exportedAt: new Date().toISOString(),
+    // classId here is this server's ProjectClass.id — import.ts remaps it
+    // old->new the same way it remaps seriesId (see restore.ts), matching by
+    // class *name* against the `classes` list below.
     projects: projects.map(({ userId: _, cards, ...proj }) => ({
       ...proj,
       cards: cards.map(({ tags, ...card }) => ({
@@ -47,6 +55,7 @@ export async function GET() {
       tags: joinToChips(tags).map((t) => t.name),
     })),
     tags: tags.map(({ userId: _, ...tag }) => tag),
+    classes,
   };
 
   const date = new Date().toISOString().slice(0, 10);

@@ -21,6 +21,9 @@ export default async function BoardSettingsPage() {
           <Link className={styles.back} href="/settings/tokens">
             Tokens
           </Link>
+          <Link className={styles.back} href="/settings/classes">
+            Classes
+          </Link>
           <Link className={styles.back} href="/">
             ← Board
           </Link>

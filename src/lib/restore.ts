@@ -1,13 +1,15 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { Lane } from "@/generated/prisma/enums";
+import { ScheduleMode as PrismaScheduleMode } from "@/generated/prisma/enums";
 import { ValidationError } from "@/lib/errors";
 import { publish } from "@/lib/events/bus";
+import { parseWindows, serializeWindows, validateTz, type ScheduleMode } from "@/lib/board/schedule";
 
 // Import counterpart to the backup export in src/app/api/backup/route.ts.
-// The backup file is user-scoped data only (projects, cards, ideas, tags).
-// Not covered, by design: ProjectShare (never exported) and card assignees
-// (they reference other users, so we drop them on import).
+// The backup file is user-scoped data only (projects, cards, ideas, tags,
+// classes). Not covered, by design: ProjectShare (never exported) and card
+// assignees (they reference other users, so we drop them on import).
 
 const SUPPORTED_VERSION = 1;
 
@@ -16,6 +18,8 @@ const SUPPORTED_VERSION = 1;
 const MAX_PROJECT_NAME = 120;
 const MAX_TITLE = 200;
 const MAX_TAG_NAME = 32;
+const MAX_CLASS_NAME = 60;
+const SCHEDULE_MODE_VALUES: ScheduleMode[] = ["ALWAYS", "NEVER", "CLASS"];
 const MAX_TAGS_PER_ITEM = 16;
 
 export type ImportMode = "merge" | "replace";
@@ -45,7 +49,22 @@ export type BackupProject = {
   priority: number;
   archived: boolean;
   createdAt: string | null;
+  // Absent on old backups (pre schedule-classes feature): default ALWAYS/null.
+  scheduleMode: ScheduleMode;
+  // Original classId from the export. Not written directly on import (see
+  // BackupCard.id/seriesId for the same pattern) — remapped old -> new via
+  // the class's name once every class in the backup has its new id.
+  classId: string | null;
   cards: BackupCard[];
+};
+
+export type BackupClass = {
+  // Original id from the export. Not written on import — kept only to remap
+  // BackupProject.classId references within the same backup.
+  id: string | null;
+  name: string;
+  tz: string;
+  windows: string;
 };
 
 export type BackupIdea = {
@@ -66,6 +85,7 @@ export type Backup = {
   projects: BackupProject[];
   ideas: BackupIdea[];
   tags: BackupTag[];
+  classes: BackupClass[];
 };
 
 export type ImportCounts = {
@@ -73,6 +93,7 @@ export type ImportCounts = {
   cards: number;
   ideas: number;
   tags: number;
+  classes: number;
 };
 
 // --- validation -----------------------------------------------------------
@@ -147,6 +168,15 @@ function parseLane(v: unknown): Lane {
   return Lane[v as keyof typeof Lane];
 }
 
+// Absent on old backups (pre schedule-classes feature): default ALWAYS.
+function parseScheduleMode(v: unknown, field: string): ScheduleMode {
+  if (v === undefined || v === null) return "ALWAYS";
+  if (typeof v !== "string" || !SCHEDULE_MODE_VALUES.includes(v as ScheduleMode)) {
+    throw new ValidationError(`${field} must be one of ${SCHEDULE_MODE_VALUES.join(", ")}`);
+  }
+  return v as ScheduleMode;
+}
+
 /**
  * Validate raw parsed JSON into a normalized Backup. Throws ValidationError on
  * any structural problem. Fields not needed on import (ids, userId, assigneeId,
@@ -165,15 +195,32 @@ export function parseBackup(raw: unknown): Backup {
   const rawProjects = raw.projects ?? [];
   const rawIdeas = raw.ideas ?? [];
   const rawTags = raw.tags ?? [];
+  const rawClasses = raw.classes ?? [];
   if (!Array.isArray(rawProjects)) throw new ValidationError("projects must be an array");
   if (!Array.isArray(rawIdeas)) throw new ValidationError("ideas must be an array");
   if (!Array.isArray(rawTags)) throw new ValidationError("tags must be an array");
+  if (!Array.isArray(rawClasses)) throw new ValidationError("classes must be an array");
 
   const tags: BackupTag[] = rawTags.map((t, i) => {
     if (!isObject(t)) throw new ValidationError(`tags[${i}] must be an object`);
     const name = normalizeTagName(asString(t.name, `tags[${i}].name`, MAX_TAG_NAME));
     if (name.length === 0) throw new ValidationError(`tags[${i}].name is empty after normalizing`);
     return { name, color: asStringOrNull(t.color, `tags[${i}].color`) };
+  });
+
+  const classes: BackupClass[] = rawClasses.map((c, i) => {
+    if (!isObject(c)) throw new ValidationError(`classes[${i}] must be an object`);
+    const where = `classes[${i}]`;
+    const tz = validateTz(c.tz);
+    // Re-serialize through parseWindows/serializeWindows to normalize and
+    // reject anything malformed, same as validateRecurrence does in mutations.ts.
+    const windows = serializeWindows(parseWindows(c.windows));
+    return {
+      id: asStringOrNull(c.id, `${where}.id`),
+      name: asString(c.name, `${where}.name`, MAX_CLASS_NAME),
+      tz,
+      windows,
+    };
   });
 
   const projects: BackupProject[] = rawProjects.map((p, i) => {
@@ -185,6 +232,8 @@ export function parseBackup(raw: unknown): Backup {
       priority: asInt(p.priority ?? 1, `projects[${i}].priority`),
       archived: p.archived === true,
       createdAt: asDateOrNull(p.createdAt, `projects[${i}].createdAt`),
+      scheduleMode: parseScheduleMode(p.scheduleMode, `projects[${i}].scheduleMode`),
+      classId: asStringOrNull(p.classId, `projects[${i}].classId`),
       cards: rawCards.map((c, j) => {
         if (!isObject(c)) throw new ValidationError(`projects[${i}].cards[${j}] must be an object`);
         const where = `projects[${i}].cards[${j}]`;
@@ -224,7 +273,7 @@ export function parseBackup(raw: unknown): Backup {
     };
   });
 
-  return { projects, ideas, tags };
+  return { projects, ideas, tags, classes };
 }
 
 // --- import ---------------------------------------------------------------
@@ -242,14 +291,43 @@ export async function importBackup(
   backup: Backup,
   mode: ImportMode,
 ): Promise<ImportCounts> {
-  const counts: ImportCounts = { projects: 0, cards: 0, ideas: 0, tags: 0 };
+  const counts: ImportCounts = { projects: 0, cards: 0, ideas: 0, tags: 0, classes: 0 };
 
   await db.$transaction(async (tx) => {
     if (mode === "replace") {
-      // Cascades handle cards, cardTags, ideaTags on delete.
+      // Cascades handle cards, cardTags, ideaTags on delete. Classes are
+      // intentionally NOT wiped on replace — they're merged by name below
+      // regardless of mode, so a class already in use by this user's shares
+      // of other people's projects (untouched by this import) isn't orphaned.
       await tx.project.deleteMany({ where: { userId } });
       await tx.idea.deleteMany({ where: { userId } });
       await tx.tag.deleteMany({ where: { userId } });
+    }
+
+    // Resolve every class name in the backup to an id for this user,
+    // creating rows as needed. An existing class with that name is reused
+    // as-is (skip/merge by name — same idea as the tag merge below), and its
+    // id becomes the target of the old->new remap for BackupProject.classId.
+    const classIdByName = new Map<string, string>();
+    const existingClasses = await tx.projectClass.findMany({
+      where: { userId, name: { in: backup.classes.map((c) => c.name) } },
+      select: { id: true, name: true },
+    });
+    for (const c of existingClasses) classIdByName.set(c.name, c.id);
+
+    const classIdMap = new Map<string, string>(); // old (backup) class id -> resolved id
+    for (const c of backup.classes) {
+      let resolvedId = classIdByName.get(c.name);
+      if (!resolvedId) {
+        const created = await tx.projectClass.create({
+          data: { userId, name: c.name, tz: c.tz, windows: c.windows },
+          select: { id: true },
+        });
+        resolvedId = created.id;
+        classIdByName.set(c.name, resolvedId);
+        counts.classes += 1;
+      }
+      if (c.id) classIdMap.set(c.id, resolvedId);
     }
 
     // Resolve every tag name (explicit + referenced) to an id for this user,
@@ -281,12 +359,22 @@ export async function importBackup(
     }
 
     for (const p of backup.projects) {
+      // Remap classId old -> new via the class-name resolution above. If the
+      // referenced class isn't in this backup (e.g. a partial/edited
+      // export), or the mode is CLASS with no resolvable class, fall back to
+      // ALWAYS/no-class rather than leaving a dangling reference.
+      const remappedClassId = p.classId ? (classIdMap.get(p.classId) ?? null) : null;
+      const scheduleMode = p.scheduleMode === "CLASS" && !remappedClassId ? "ALWAYS" : p.scheduleMode;
+      const classId = scheduleMode === "CLASS" ? remappedClassId : null;
+
       const project = await tx.project.create({
         data: {
           userId,
           name: p.name,
           priority: p.priority,
           archived: p.archived,
+          scheduleMode: PrismaScheduleMode[scheduleMode],
+          classId,
           ...(p.createdAt ? { createdAt: new Date(p.createdAt) } : {}),
         },
         select: { id: true },

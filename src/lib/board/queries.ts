@@ -7,6 +7,7 @@ import { joinToChips, type TagChip } from "@/lib/tags";
 import { compareProjects, scoreProject } from "./sorting";
 import { sweepDueCards } from "./mutations";
 import { emitBoardForProject } from "./access";
+import { isProjectActive, parseWindows, type ClassSchedule, type ScheduleMode } from "./schedule";
 
 export const LANES = [Lane.BACKLOG, Lane.TODO, Lane.DOING, Lane.DONE, Lane.FAILED] as const;
 
@@ -32,7 +33,17 @@ export type ProjectRow = Project & {
   isOwner: boolean;
   ownerEmail?: string;
   pinnedToBoard?: boolean;
+  // scheduleMode/classId are already on Project, but here they always reflect
+  // the *viewer's* choice: the owner's own Project row for an owned project,
+  // or the viewer's ProjectShare row for a shared one (mirrors `priority`).
+  schedule: ClassSchedule | null; // the resolved class's tz+parsed windows, or null under ALWAYS/NEVER/dangling classId
+  activeNow: boolean; // isProjectActive(scheduleMode, schedule, <read time>)
 };
+
+function toClassSchedule(cls: { tz: string; windows: string } | null | undefined): ClassSchedule | null {
+  if (!cls) return null;
+  return { tz: cls.tz, windows: parseWindows(cls.windows) };
+}
 
 // Sweep due cards into FAILED, then notify any *other* open tabs for projects
 // that changed. The caller of getBoardForUser/getSharedBoard is about to get
@@ -68,6 +79,7 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
           },
         },
         shares: { select: { id: true } },
+        class: { select: { tz: true, windows: true } },
       },
     }),
     db.projectShare.findMany({
@@ -86,6 +98,7 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
             shares: { select: { id: true } },
           },
         },
+        class: { select: { tz: true, windows: true } },
       },
     }),
   ]);
@@ -94,9 +107,16 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
   type SharedLink = typeof sharedLinks[number];
 
   function buildRow(
-    p: RawProject | SharedLink["project"],
+    p: Omit<RawProject, "class"> | SharedLink["project"],
     isOwner: boolean,
-    opts?: { ownerEmail?: string; priorityOverride?: number; pinnedToBoard?: boolean },
+    opts: {
+      ownerEmail?: string;
+      priorityOverride?: number;
+      pinnedToBoard?: boolean;
+      scheduleMode: ScheduleMode;
+      classId: string | null;
+      schedule: ClassSchedule | null;
+    },
   ): { row: ProjectRow; score: number } {
     const lanes: Record<(typeof LANES)[number], CardWithTags[]> = {
       [Lane.BACKLOG]: [],
@@ -122,24 +142,38 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
     const score = scoreProject(scoreCards, now);
     const row: ProjectRow = {
       ...rest,
-      ...(opts?.priorityOverride !== undefined ? { priority: opts.priorityOverride } : {}),
+      scheduleMode: opts.scheduleMode,
+      classId: opts.classId,
+      schedule: opts.schedule,
+      activeNow: isProjectActive(opts.scheduleMode, opts.schedule, now),
+      ...(opts.priorityOverride !== undefined ? { priority: opts.priorityOverride } : {}),
       lanes,
       isShared: shares.length > 0,
       isOwner,
-      ...(opts?.ownerEmail ? { ownerEmail: opts.ownerEmail } : {}),
-      ...(opts?.pinnedToBoard !== undefined ? { pinnedToBoard: opts.pinnedToBoard } : {}),
+      ...(opts.ownerEmail ? { ownerEmail: opts.ownerEmail } : {}),
+      ...(opts.pinnedToBoard !== undefined ? { pinnedToBoard: opts.pinnedToBoard } : {}),
     };
     return { row, score };
   }
 
   const now = new Date();
   const ranked = [
-    ...ownedProjects.map((p) => buildRow(p, true)),
+    ...ownedProjects.map((p) => {
+      const { class: classRel, ...proj } = p;
+      return buildRow(proj, true, {
+        scheduleMode: proj.scheduleMode,
+        classId: proj.classId,
+        schedule: toClassSchedule(classRel),
+      });
+    }),
     ...sharedLinks
       .filter((s) => !s.project.archived)
       .map((s) => buildRow(s.project, false, {
         ownerEmail: s.project.user.email,
         priorityOverride: s.priority,
+        scheduleMode: s.scheduleMode,
+        classId: s.classId,
+        schedule: toClassSchedule(s.class),
       })),
   ];
 
@@ -173,6 +207,7 @@ export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
           shares: { select: { id: true } },
         },
       },
+      class: { select: { tz: true, windows: true } },
     },
   });
 
@@ -200,9 +235,14 @@ export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
       const { cards: _cards, shares, user, ...rest } = p;
       void _cards;
       const score = scoreProject(scoreCards, now);
+      const schedule = toClassSchedule(s.class);
       const row: ProjectRow = {
         ...rest,
         priority: s.priority,
+        scheduleMode: s.scheduleMode,
+        classId: s.classId,
+        schedule,
+        activeNow: isProjectActive(s.scheduleMode, schedule, now),
         lanes,
         isShared: shares.length > 0,
         isOwner: false,
@@ -223,21 +263,23 @@ export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
 
 export type ProjectSummary = Pick<
   Project,
-  "id" | "name" | "priority" | "archived" | "createdAt" | "updatedAt"
-> & { isOwner: boolean; ownerEmail?: string };
+  "id" | "name" | "priority" | "archived" | "createdAt" | "updatedAt" | "scheduleMode" | "classId"
+> & { isOwner: boolean; ownerEmail?: string; activeNow: boolean };
 
 export async function listProjects(
   userId: string,
   opts: { includeArchived?: boolean } = {},
 ): Promise<ProjectSummary[]> {
   const archiveFilter = opts.includeArchived ? {} : { archived: false };
+  const now = new Date();
   const [owned, sharedLinks] = await Promise.all([
     db.project.findMany({
       where: { userId, ...archiveFilter },
       orderBy: [{ priority: "asc" }, { name: "asc" }],
       select: {
         id: true, name: true, priority: true, archived: true,
-        createdAt: true, updatedAt: true,
+        createdAt: true, updatedAt: true, scheduleMode: true, classId: true,
+        class: { select: { tz: true, windows: true } },
       },
     }),
     db.projectShare.findMany({
@@ -250,6 +292,7 @@ export async function listProjects(
             user: { select: { email: true } },
           },
         },
+        class: { select: { tz: true, windows: true } },
       },
     }),
   ]);
@@ -257,10 +300,26 @@ export async function listProjects(
     .filter((s) => opts.includeArchived || !s.project.archived)
     .map((s) => {
       const { user, ...proj } = s.project;
-      return { ...proj, isOwner: false, ownerEmail: user.email } as ProjectSummary;
+      const schedule = toClassSchedule(s.class);
+      return {
+        ...proj,
+        isOwner: false,
+        ownerEmail: user.email,
+        scheduleMode: s.scheduleMode,
+        classId: s.classId,
+        activeNow: isProjectActive(s.scheduleMode, schedule, now),
+      } as ProjectSummary;
     });
   return [
-    ...owned.map((p) => ({ ...p, isOwner: true }) as ProjectSummary),
+    ...owned.map((p) => {
+      const { class: classRel, ...proj } = p;
+      const schedule = toClassSchedule(classRel);
+      return {
+        ...proj,
+        isOwner: true,
+        activeNow: isProjectActive(proj.scheduleMode, schedule, now),
+      } as ProjectSummary;
+    }),
     ...shared,
   ];
 }
