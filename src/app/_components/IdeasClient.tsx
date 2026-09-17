@@ -27,10 +27,7 @@ import {
   deleteIdeaAction,
   promoteIdeaAction,
   reorderIdeasAction,
-  updateIdeaAction,
 } from "@/lib/actions/ideas";
-import { setIdeaTagsAction } from "@/lib/actions/tags";
-import { CardDrawer, type DrawerCard } from "./CardDrawer";
 import { TagChip, TagChipOverflow } from "./TagChip";
 import {
   TagFilterBar,
@@ -52,16 +49,13 @@ export type ClientIdea = {
 
 export function IdeasClient({
   ideas,
-  allTags,
   filterTags,
 }: {
   ideas: ClientIdea[];
-  allTags: ClientTag[];
   filterTags: ClientTag[];
 }) {
   const router = useRouter();
   const [local, setLocal] = useState<ClientIdea[]>(ideas);
-  const [drawerCard, setDrawerCard] = useState<DrawerCard | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -71,7 +65,7 @@ export function IdeasClient({
 
   // See BoardClient for the rationale on the busy-guarded refresh.
   const pendingRefresh = useRef(false);
-  const busy = activeId !== null || drawerCard !== null;
+  const busy = activeId !== null;
 
   const handleEvent = useCallback(() => {
     if (busy) {
@@ -114,16 +108,11 @@ export function IdeasClient({
     );
   }, [filterActive, tagFilter, local]);
 
+  // Opening a concept goes to its own board — title, notes, tags *and* its
+  // decomposition — rather than the card drawer. The axis rows are the point of
+  // that screen and need more room than a drawer has.
   const openIdea = (idea: ClientIdea) => {
-    setDrawerCard({
-      id: idea.id,
-      crumbs: ["Idea pool"],
-      title: idea.title,
-      contentJson: idea.contentJson,
-      tags: idea.tags,
-      dueAt: null,
-      expires: false,
-    });
+    router.push(`/ideas/${idea.id}`);
   };
 
   const handleDragStart = (e: DragStartEvent) => setActiveId(String(e.active.id));
@@ -189,21 +178,6 @@ export function IdeasClient({
         </div>
       </div>
 
-      <CardDrawer
-        card={drawerCard}
-        allTags={allTags}
-        showDue={false}
-        onClose={() => setDrawerCard(null)}
-        onSave={async ({ id, title, contentJson, tags, tagsChanged }) => {
-          await updateIdeaAction({ id, title, contentJson });
-          if (tagsChanged) {
-            await setIdeaTagsAction({ ideaId: id, tags });
-          }
-        }}
-        onDelete={async (id) => {
-          await deleteIdeaAction(id);
-        }}
-      />
     </>
   );
 }

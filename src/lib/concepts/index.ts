@@ -4,3 +4,4 @@
 export * from "./normalize";
 export * from "./axes";
 export * from "./components";
+export * from "./decomposition";

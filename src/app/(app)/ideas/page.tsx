@@ -33,7 +33,7 @@ export default async function IdeasPage() {
         <PageHeader title="Idea pool" subtitle="Rough notes that aren't projects yet." />
       </div>
 
-      <IdeasClient ideas={clientIdeas} allTags={allTags} filterTags={filterTags} />
+      <IdeasClient ideas={clientIdeas} filterTags={filterTags} />
     </main>
   );
 }
