@@ -229,6 +229,26 @@ export function BoardClient({
   // clobbering a stored value with the default before hydration runs.
   const hasHydratedLanesRef = useRef(false);
   const hasHydratedShowInactiveRef = useRef(false);
+  const boardScrollRef = useRef<HTMLElement | null>(null);
+
+  // The sticky project rail only earns its scroll-shadow once there is
+  // something scrolled underneath it. Toggled straight on the DOM node
+  // instead of through React state so scrolling a 20-row board doesn't
+  // re-render the whole grid on every frame.
+  useEffect(() => {
+    const el = boardScrollRef.current;
+    if (!el) return;
+    const sync = () => {
+      el.dataset.scrolledX = el.scrollLeft > 0 ? "true" : "false";
+    };
+    sync();
+    el.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync);
+    return () => {
+      el.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -643,7 +663,7 @@ export function BoardClient({
         onDragEnd={handleDragEnd}
         onDragCancel={() => setActiveDrag(null)}
       >
-        <section className={styles.boardScroll}>
+        <section className={styles.boardScroll} ref={boardScrollRef}>
           <div className={styles.board} style={{ gridTemplateColumns }}>
             <div className={styles.cornerCell}>
               <button

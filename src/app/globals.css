@@ -24,6 +24,10 @@
      invisible on a near-black ground, so the dark values are much stronger. */
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.06), 0 3px 8px rgb(0 0 0 / 0.04);
   --shadow-card-hover: 0 1px 2px rgb(0 0 0 / 0.08), 0 6px 14px rgb(0 0 0 / 0.08);
+
+  /* Cast rightwards off a sticky left rail, so content scrolling underneath
+     reads as underneath. Only painted once the board is actually scrolled. */
+  --shadow-rail: 6px 0 10px -6px rgb(0 0 0 / 0.16);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -46,6 +50,8 @@
 
     --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 3px 8px rgb(0 0 0 / 0.22);
     --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.5), 0 8px 18px rgb(0 0 0 / 0.3);
+
+    --shadow-rail: 6px 0 12px -6px rgb(0 0 0 / 0.55);
 
     color-scheme: dark;
   }

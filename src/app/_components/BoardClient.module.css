@@ -4,6 +4,33 @@
   padding: 16px 24px 24px;
 }
 
+/* data-scrolled-x is toggled directly on the node by a passive scroll
+   listener in BoardClient — via the DOM rather than React state, so a 20-row
+   board doesn't re-render on every scroll frame. */
+.boardScroll[data-scrolled-x="true"] .projectCell,
+.boardScroll[data-scrolled-x="true"] .cornerCell {
+  box-shadow: var(--shadow-rail);
+}
+
+/* Chromium insets the sticky constraint rectangle by the scroll container's
+   padding, so a `left: 0` rail pins at 24px, not 0 — and lane content slides
+   visibly through the gutter beside it. Bleed the rail's own ground across
+   that gutter so "pinned" actually means pinned. */
+.projectCell::before,
+.cornerCell::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 100%;
+  /* Wider than the 24px gutter it covers: `right: 100%` resolves against the
+     padding box, so an exact 24px can land a sub-pixel short of the edge.
+     The overhang scrolls off-screen and costs nothing. */
+  width: 40px;
+  background: var(--elev-0);
+  pointer-events: none;
+}
+
 .board {
   display: grid;
   /* grid-template-columns is set inline by BoardClient so lane collapses
@@ -12,10 +39,18 @@
   gap: 8px;
 }
 
+/* Pinned in both axes: it is the intersection of the sticky lane-header row
+   and the sticky project rail, so it must outrank both. */
 .cornerCell {
   display: flex;
   align-items: center;
   padding: 4px 4px 4px 0;
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  background: var(--elev-0);
+  transition: box-shadow 0.15s;
 }
 
 .collapseAllBtn {
@@ -68,7 +103,8 @@
   text-align: left;
   cursor: pointer;
   transition: color 0.15s, background 0.15s;
-  z-index: 1;
+  /* Above the sticky project rail (2), below the corner cell (4). */
+  z-index: 3;
 }
 
 .laneHeader:hover {
@@ -105,12 +141,22 @@
   align-items: center;
   gap: 4px;
   padding: 10px 8px 10px 4px;
-  transition: padding 0.15s;
-  background: transparent;
+  transition: padding 0.15s, box-shadow 0.15s;
+  /* Opaque page ground, not `transparent`: the rail is sticky, so cards must
+     scroll *behind* it rather than through it. --elev-0 is the same value the
+     ground paints, so demoting the cell to a rail stays visually identical
+     until the board is actually scrolled sideways. */
+  background: var(--elev-0);
   border: 0;
   border-right: 1px solid var(--border);
   border-radius: 0;
   min-height: 80px;
+  /* Below 1110px the grid overflows and the row labels would scroll away
+     with the cards, leaving you looking at cards with no idea whose they
+     are. Pin them. Above cards (auto), below the lane header (3). */
+  position: sticky;
+  left: 0;
+  z-index: 2;
 }
 
 
@@ -835,12 +881,23 @@
     display: none;
   }
 
-  /* Single column: the rail divider belongs under the project, not beside it. */
+  /* Single column: nothing scrolls sideways, so there is no rail to pin —
+     and the divider belongs under the project, not beside it. */
   .projectCell {
     padding: 8px 10px;
     min-height: 0;
     border-right: 0;
     border-bottom: 1px solid var(--border);
+    position: static;
+    box-shadow: none;
+  }
+
+  .boardScroll[data-scrolled-x="true"] .projectCell {
+    box-shadow: none;
+  }
+
+  .projectCell::before {
+    display: none;
   }
 
   .laneMobileLabel {
