@@ -1,7 +1,7 @@
 .boardScroll {
   flex: 1;
   overflow: auto;
-  padding: 16px 24px 24px;
+  padding: var(--s-4) var(--s-6) var(--s-6);
 }
 
 /* data-scrolled-x is toggled directly on the node by a passive scroll
@@ -36,7 +36,7 @@
   /* grid-template-columns is set inline by BoardClient so lane collapses
      can change column widths at runtime. */
   grid-template-columns: 260px repeat(5, minmax(160px, 1fr));
-  gap: 8px;
+  gap: var(--s-2);
 }
 
 /* Pinned in both axes: it is the intersection of the sticky lane-header row
@@ -44,31 +44,31 @@
 .cornerCell {
   display: flex;
   align-items: center;
-  padding: 4px 4px 4px 0;
+  padding: var(--s-1) var(--s-1) var(--s-1) 0;
   position: sticky;
   left: 0;
   top: 0;
   z-index: 4;
   background: var(--elev-0);
-  transition: box-shadow 0.15s;
+  transition: box-shadow var(--t-base) var(--ease);
 }
 
 .collapseAllBtn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-2);
   font: inherit;
-  font-size: 10px;
+  font-size: var(--fs-label);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--s-1);
   cursor: pointer;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
 
 .collapseAllBtn:hover {
@@ -90,9 +90,9 @@
 .laneHeader {
   position: sticky;
   top: 0;
-  padding: 8px 12px;
+  padding: var(--s-2) var(--s-3);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--fs-label);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -106,7 +106,7 @@
   border-bottom: 2px solid color-mix(in srgb, var(--lane-c, var(--border)) 75%, transparent);
   text-align: left;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
   /* Above the sticky project rail (2), below the corner cell (4). */
   z-index: 3;
 }
@@ -118,12 +118,12 @@
 .laneHeaderCollapsed {
   writing-mode: vertical-rl;
   text-orientation: mixed;
-  padding: 10px 4px;
+  padding: var(--s-3) var(--s-1);
   letter-spacing: 0.08em;
 }
 
 .laneHeaderCount {
-  margin-left: 4px;
+  margin-left: var(--s-1);
   font-weight: 500;
   text-transform: none;
   letter-spacing: normal;
@@ -133,7 +133,7 @@
 .laneHeaderCollapsed .laneHeaderCount {
   display: block;
   margin-left: 0;
-  margin-top: 6px;
+  margin-top: var(--s-2);
 }
 
 /* A quiet rail, not a card. The project name is a static label nobody
@@ -143,9 +143,9 @@
 .projectCell {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 10px 8px 10px 4px;
-  transition: padding 0.15s, box-shadow 0.15s;
+  gap: var(--s-1);
+  padding: var(--s-3) var(--s-2) var(--s-3) var(--s-1);
+  transition: padding var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease);
   /* Opaque page ground, not `transparent`: the rail is sticky, so cards must
      scroll *behind* it rather than through it. --elev-0 is the same value the
      ground paints, so demoting the cell to a rail stays visually identical
@@ -166,7 +166,7 @@
 
 .projectCellCollapsed {
   min-height: 0;
-  padding: 4px 8px 4px 4px;
+  padding: var(--s-1) var(--s-2) var(--s-1) var(--s-1);
 }
 
 /* Minimized/expanded rows: three stacked lines instead of one horizontal
@@ -176,14 +176,14 @@
   align-items: stretch;
   justify-content: flex-start;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px 12px 12px;
+  gap: var(--s-2);
+  padding: var(--s-4) var(--s-3) var(--s-3);
 }
 
 /* Expanded rows have room to breathe; open the cell up a little more. */
 .projectCellExpanded {
-  gap: 10px;
-  padding: 18px 16px 16px;
+  gap: var(--s-3);
+  padding: var(--s-5) var(--s-4) var(--s-4);
 }
 
 .projectLine1,
@@ -191,7 +191,7 @@
 .projectLine3 {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-2);
   min-width: 0;
 }
 
@@ -202,23 +202,23 @@
 }
 
 .projectLine3 {
-  gap: 4px;
+  gap: var(--s-1);
 }
 
 .priorityInput {
   flex-shrink: 0;
   width: 36px;
-  padding: 3px 4px;
+  padding: var(--s-1) var(--s-1);
   font: inherit;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
   text-align: center;
   color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--s-1);
   outline: none;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
   -moz-appearance: textfield;
   appearance: textfield;
 }
@@ -243,13 +243,13 @@
 .projectInfo {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--s-1);
   flex: 1;
   min-width: 0;
 }
 
 .projectName {
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: 600;
   letter-spacing: -0.005em;
   overflow: hidden;
@@ -265,33 +265,38 @@
 
 .projectNameInput {
   font: inherit;
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: 600;
   letter-spacing: -0.005em;
   color: var(--text);
   background: var(--elev-2);
   border: 1px solid var(--accent);
-  border-radius: 4px;
-  padding: 1px 4px;
+  border-radius: var(--s-1);
+  /* Off-scale on purpose: this inset and the negative margin below cancel out
+     so the input lands exactly on top of the static text it replaces. They are
+     optical compensation, not spacing. */
+  padding: 1px var(--s-1);
   margin: -2px -5px;
   width: 100%;
   outline: none;
 }
 
 .projectCount {
-  font-size: 11px;
+  font-size: var(--fs-label);
   color: var(--text-dim);
 }
 
 .toggleGroup {
   display: inline-flex;
+  /* The 1px gap and inset are the separator: the group's border-coloured
+     background shows through between the buttons. A hairline, not spacing. */
   gap: 1px;
   padding: 1px;
   background: var(--border);
-  border-radius: 4px;
+  border-radius: var(--s-1);
   flex-shrink: 0;
   opacity: 0.4;
-  transition: opacity 0.15s;
+  transition: opacity var(--t-base) var(--ease);
 }
 
 .projectCell:hover .toggleGroup {
@@ -304,14 +309,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
+  font-size: var(--fs-label);
   line-height: 1;
   color: var(--text-dim);
   background: var(--elev-2);
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--s-1);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 
 .toggleBtn:hover:not(.toggleBtnActive) {
@@ -334,9 +339,9 @@
   color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--s-1);
   opacity: 0;
-  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  transition: opacity var(--t-base) var(--ease), color var(--t-base) var(--ease), background var(--t-base) var(--ease);
 }
 
 .projectCell:hover .projectDelete {
@@ -367,14 +372,14 @@
   border: 1px solid color-mix(in srgb, var(--lane-c, var(--border)) calc(var(--heat, 0) * 40%), var(--border));
   border-radius: var(--radius);
   min-height: 80px;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
 }
 
 .laneInner {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px;
+  gap: var(--s-2);
+  padding: var(--s-2);
   height: 100%;
 }
 
@@ -408,7 +413,7 @@
    rather than naming them, so Backlog — which deliberately has none — keeps
    the snappy base timing. */
 .laneCellHeated {
-  transition: background 0.3s, border-color 0.3s;
+  transition: background var(--t-slow) var(--ease), border-color var(--t-slow) var(--ease);
 }
 
 /* Backlog never tints. LaneCell already declines to pass it a heat value, but
@@ -449,7 +454,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--fs-label);
   font-weight: 600;
   /* A collapsed column is a 44px strip with nothing but this number in it.
      Carrying the ramp here is the only thing telling you which lane it is. */
@@ -458,9 +463,9 @@
 
 .laneEmpty {
   flex: 1;
-  min-height: 24px;
+  min-height: var(--s-6);
   border: 1px dashed color-mix(in srgb, var(--border) 80%, transparent);
-  border-radius: 4px;
+  border-radius: var(--s-1);
 }
 
 /* The top strip (18px) plus the flex gap (6px) it introduces already equal
@@ -474,13 +479,13 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 5px;
+  gap: var(--s-1);
   /* 2px of the lane's ramp colour on the leading edge. padding-left drops to
      8px so the border doesn't shift the content. Restrained on purpose: this
      is orientation, not decoration — you should be able to tell which column
      a card came from at a glance without it drawing the eye. */
-  padding: 8px 10px 8px 8px;
-  font-size: 13px;
+  padding: var(--s-2) var(--s-3) var(--s-2) var(--s-2);
+  font-size: var(--fs-body);
   line-height: 1.35;
   color: var(--text);
   text-align: left;
@@ -491,47 +496,50 @@
   border: 1px solid var(--border);
   /* After the `border` shorthand, or it gets reset by it. */
   border-left: 2px solid var(--lane-c, var(--border));
-  border-radius: 5px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow-card);
   cursor: pointer;
   /* Allow native vertical scroll to pass through; the TouchSensor long-press
      (220ms) still initiates a drag without fighting the scroll gesture. */
   touch-action: pan-y;
   transition:
-    background 0.15s,
-    border-color 0.15s,
-    box-shadow 0.15s,
-    transform 0.05s;
+    background var(--t-base) var(--ease),
+    border-color var(--t-base) var(--ease),
+    box-shadow var(--t-base) var(--ease),
+    transform var(--t-fast) var(--ease);
 }
 
 .cardHead {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--s-2);
 }
 
-/* Due-date urgency tiers. Left border tint + matching chip; padding-left
-   trims 3px so the added border doesn't shift the content. */
+/* Due-date urgency tiers: they recolour the card's 2px leading edge and match
+   the chip. Same width as the lane ramp border it replaces, so padding-left
+   stays on the scale and the content doesn't shift between tiers. */
 .cardDueSoon {
-  padding-left: 7px;
-  border-left: 3px solid var(--warning);
+  padding-left: var(--s-2);
+  border-left: 2px solid var(--warning);
 }
 
 .cardDueImminent {
-  padding-left: 7px;
-  border-left: 3px solid color-mix(in srgb, var(--warning) 35%, var(--danger));
+  padding-left: var(--s-2);
+  border-left: 2px solid color-mix(in srgb, var(--warning) 35%, var(--danger));
 }
 
 .cardOverdue {
-  padding-left: 7px;
-  border-left: 3px solid var(--danger);
+  padding-left: var(--s-2);
+  border-left: 2px solid var(--danger);
 }
 
+/* Pill chips keep a 1px vertical inset: they are sized by line-height, and a
+   4px step would make them taller than the text they annotate. */
 .dueChip {
   flex-shrink: 0;
-  padding: 1px 6px;
-  font-size: 10px;
+  padding: 1px var(--s-2);
+  font-size: var(--fs-label);
   font-weight: 600;
   line-height: 1.5;
   white-space: nowrap;
@@ -547,7 +555,7 @@
   justify-content: center;
   width: 16px;
   height: 16px;
-  font-size: 11px;
+  font-size: var(--fs-label);
   line-height: 1;
   color: var(--text-dim);
   background: color-mix(in srgb, var(--text-dim) 14%, transparent);
@@ -572,7 +580,7 @@
 .cardTags {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px;
+  gap: var(--s-1);
 }
 
 /* Failed cards: muted, non-interactive drag-wise. Rendered as a
@@ -581,13 +589,13 @@
 .cardFailedWrap {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--s-1);
 }
 
 .cardFailed {
   opacity: 0.72;
-  padding-left: 7px;
-  border-left: 3px solid var(--danger);
+  padding-left: var(--s-2);
+  border-left: 2px solid var(--danger);
   cursor: pointer;
 }
 
@@ -597,14 +605,14 @@
 
 .rescueBtn {
   align-self: flex-end;
-  padding: 3px 9px;
-  font-size: 11px;
+  padding: var(--s-1) var(--s-2);
+  font-size: var(--fs-label);
   font-weight: 600;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   border-radius: 999px;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
 
 .rescueBtn:hover {
@@ -614,8 +622,8 @@
 
 .rescuedChip {
   align-self: flex-start;
-  padding: 1px 6px;
-  font-size: 10px;
+  padding: 1px var(--s-2);
+  font-size: var(--fs-label);
   font-weight: 600;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -624,37 +632,37 @@
 
 .filterEmpty {
   grid-column: 1 / -1;
-  padding: 24px 12px;
+  padding: var(--s-6) var(--s-3);
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-body);
   text-align: center;
 }
 
 .filterBarSlot {
-  padding: 12px 24px 0;
+  padding: var(--s-3) var(--s-6) 0;
 }
 
 .inactiveBar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 24px 0;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-6) 0;
 }
 
 .inactiveBarText {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text-dim);
 }
 
 .inactiveBarBtn {
-  padding: 3px 10px;
-  font-size: 12px;
+  padding: var(--s-1) var(--s-3);
+  font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   border-radius: 999px;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
 
 .inactiveBarBtn:hover {
@@ -665,14 +673,14 @@
 .scheduleRow {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-2);
   min-width: 0;
 }
 
 .projectInactiveBadge {
   flex-shrink: 0;
-  padding: 1px 6px;
-  font-size: 9px;
+  padding: 1px var(--s-2);
+  font-size: var(--fs-label);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -710,7 +718,7 @@
   flex-shrink: 0;
   width: 6px;
   height: 6px;
-  margin-top: 5px;
+  margin-top: var(--s-1);
   /* "This card has a body" — nothing to do with lanes or with primary
      actions. It was one of the dozen jobs teal was doing; now that the ramp
      carries lane meaning, this goes back to being quiet chrome. */
@@ -722,18 +730,18 @@
 .addBtn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  font-size: 12px;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-2);
+  font-size: var(--fs-sm);
   color: var(--text-dim);
   background: transparent;
   border: 1px dashed transparent;
-  border-radius: 4px;
+  border-radius: var(--s-1);
   text-align: left;
   transition:
-    color 0.15s,
-    border-color 0.15s,
-    background 0.15s;
+    color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease);
 }
 
 .addBtn:hover {
@@ -755,13 +763,13 @@
   color: var(--text-dim);
   background: transparent;
   border: 1px dashed transparent;
-  border-radius: 4px;
+  border-radius: var(--s-1);
   opacity: 0;
   transition:
-    opacity 0.15s,
-    color 0.15s,
-    border-color 0.15s,
-    background 0.15s;
+    opacity var(--t-base) var(--ease),
+    color var(--t-base) var(--ease),
+    border-color var(--t-base) var(--ease),
+    background var(--t-base) var(--ease);
 }
 
 .laneInner:hover .addTopStrip,
@@ -781,32 +789,32 @@
 
 .addInput {
   width: 100%;
-  padding: 6px 10px;
+  padding: var(--s-2) var(--s-3);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--fs-body);
   color: var(--text);
   background: var(--elev-2);
   border: 1px solid var(--accent);
-  border-radius: 4px;
+  border-radius: var(--s-1);
   outline: none;
 }
 
 .cardGhost {
-  padding: 8px 10px;
-  font-size: 13px;
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-body);
   line-height: 1.35;
   color: var(--text);
   background: var(--elev-3);
   border: 1px solid var(--accent);
-  border-radius: 5px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow-card-hover);
   cursor: grabbing;
   max-width: 280px;
 }
 
 .projectGhost {
-  padding: 10px 14px;
-  font-size: 14px;
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-md);
   font-weight: 600;
   color: var(--text);
   background: var(--elev-3);
@@ -817,7 +825,7 @@
 }
 
 .ownerBadge {
-  font-size: 10px;
+  font-size: var(--fs-label);
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -835,9 +843,9 @@
   color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--s-1);
   opacity: 0;
-  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  transition: opacity var(--t-base) var(--ease), color var(--t-base) var(--ease), background var(--t-base) var(--ease);
 }
 
 .projectCell:hover .shareBtn {
@@ -859,8 +867,8 @@
   color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
+  border-radius: var(--s-1);
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
 
 .pinBtn:hover:not(:disabled) {
@@ -877,7 +885,7 @@
 }
 
 .cardAssignee {
-  font-size: 10px;
+  font-size: var(--fs-label);
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -894,7 +902,7 @@
 
 @media (max-width: 700px) {
   .boardScroll {
-    padding: 12px 12px 24px;
+    padding: var(--s-3) var(--s-3) var(--s-6);
   }
 
   /* Override the runtime grid-template-columns set inline by BoardClient.
@@ -902,7 +910,7 @@
      project) already produces the project-stacked layout. */
   .board {
     grid-template-columns: 1fr !important;
-    gap: 10px;
+    gap: var(--s-3);
   }
 
   .cornerCell,
@@ -917,7 +925,7 @@
   /* Single column: nothing scrolls sideways, so there is no rail to pin —
      and the divider belongs under the project, not beside it. */
   .projectCell {
-    padding: 8px 10px;
+    padding: var(--s-2) var(--s-3);
     min-height: 0;
     border-right: 0;
     border-bottom: 1px solid var(--border);
@@ -937,8 +945,8 @@
     display: inline-flex;
     align-items: center;
     align-self: flex-start;
-    padding: 2px 6px;
-    font-size: 10px;
+    padding: 2px var(--s-2);
+    font-size: var(--fs-label);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -946,7 +954,7 @@
     background: var(--elev-2);
     border: 1px solid var(--border);
     border-left: 2px solid var(--lane-c, var(--border));
-    border-radius: 3px;
+    border-radius: var(--s-1);
   }
 
   /* Done/Failed lanes use absolute positioning to share height with siblings
@@ -975,26 +983,26 @@
   }
 
   .filterBarSlot {
-    padding: 10px 12px 0;
+    padding: var(--s-3) var(--s-3) 0;
   }
 
   .inactiveBar {
-    padding: 8px 12px 0;
+    padding: var(--s-2) var(--s-3) 0;
   }
 
   .mobileLaneBar {
     display: flex;
-    gap: 6px;
-    padding: 10px 12px 0;
+    gap: var(--s-2);
+    padding: var(--s-3) var(--s-3) 0;
   }
 
   /* The lane bar is how you switch lanes on a phone, where the desktop
      header row is hidden entirely — so it has to carry the ramp too. */
   .mobileLaneBtn {
     flex: 1;
-    padding: 6px 4px;
+    padding: var(--s-2) var(--s-1);
     font: inherit;
-    font-size: 10px;
+    font-size: var(--fs-label);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -1002,9 +1010,9 @@
     background: color-mix(in srgb, var(--lane-c, var(--elev-2)) 8%, var(--elev-2));
     border: 1px solid var(--border);
     border-bottom: 2px solid color-mix(in srgb, var(--lane-c, var(--border)) 75%, transparent);
-    border-radius: 4px;
+    border-radius: var(--s-1);
     cursor: pointer;
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
   }
 
   .mobileLaneBtnCollapsed {
@@ -1018,9 +1026,9 @@
     align-items: center;
     justify-content: center;
     min-width: 14px;
-    margin-left: 4px;
-    padding: 0 4px;
-    font-size: 9px;
+    margin-left: var(--s-1);
+    padding: 0 var(--s-1);
+    font-size: var(--fs-label);
     border-radius: 999px;
     background: color-mix(in srgb, currentColor 18%, transparent);
     color: inherit;
@@ -1031,12 +1039,12 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 6px 8px;
+    padding: var(--s-2) var(--s-2);
     color: var(--text);
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--s-1);
     cursor: pointer;
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
   }
 }
