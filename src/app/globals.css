@@ -65,6 +65,12 @@
   --s-7: 32px;
   --s-8: 40px;
 
+  /* Not spacing, so not on the --s-* scale, but density-dependent all the
+     same: the floor an empty project row collapses to, and how tightly card
+     text sets. */
+  --row-min-h: 80px;
+  --card-lh: 1.35;
+
   /* --- Motion -----------------------------------------------------------
      --t-base is 150ms so migrating the 108 literal `0.15s` transitions is a
      no-op in duration; only the easing changes. --t-slow matches the 0.3s
@@ -92,6 +98,33 @@
   --lane-doing: #e4a44c;
   --lane-done: #2dd4bf;
   --lane-failed: #e06a75;
+}
+
+/* --- Density -------------------------------------------------------------
+   Compact shifts each spacing token down exactly one step. Every value below
+   is already a step on the comfortable scale — 4, 8, 12, 16, 20, 24, 32 —
+   so this introduces no new spacing literals at all, which is the whole test
+   of whether the token migration went deep enough. It did: because
+   BoardClient.module.css expresses its padding and gaps as var(--s-*), the
+   entire compact layout falls out of redefining seven custom properties.
+
+   --s-1 stays at 4px: there is no smaller step to shift it to, and inventing
+   one here would be exactly the second set of hardcoded values this is
+   supposed to avoid.
+
+   Scoped to the board rather than :root so the app header, the card drawer
+   and the popovers keep their own rhythm. */
+[data-density="compact"] {
+  --s-2: 4px;
+  --s-3: 8px;
+  --s-4: 12px;
+  --s-5: 16px;
+  --s-6: 20px;
+  --s-7: 24px;
+  --s-8: 32px;
+
+  --row-min-h: 44px;
+  --card-lh: 1.25;
 }
 
 @media (prefers-color-scheme: dark) {

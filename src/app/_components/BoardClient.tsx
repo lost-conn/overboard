@@ -35,6 +35,7 @@ import {
   Pin,
   PinOff,
   Plus,
+  Rows2,
   Rows3,
   Rows4,
   Share2,
@@ -74,6 +75,13 @@ import {
   resolveCollapsedLanes,
   type LaneKey,
 } from "@/lib/board/lanes";
+import {
+  DEFAULT_DENSITY,
+  DENSITY_STORAGE_KEY,
+  nextDensity,
+  resolveDensity,
+  type Density,
+} from "@/lib/board/density";
 
 // The ramp reaches the stylesheet as a single inherited custom property, so
 // every descendant (header text and underline, card leading edge, drop
@@ -266,11 +274,13 @@ export function BoardClient({
     () => new Set(DEFAULT_COLLAPSED_LANES),
   );
   const [showInactive, setShowInactive] = useState(false);
+  const [density, setDensity] = useState<Density>(DEFAULT_DENSITY);
   // Once localStorage has been read (or the read failed), further changes to
   // collapsedLanes should persist. Skipping writes until then avoids
   // clobbering a stored value with the default before hydration runs.
   const hasHydratedLanesRef = useRef(false);
   const hasHydratedShowInactiveRef = useRef(false);
+  const hasHydratedDensityRef = useRef(false);
   const boardScrollRef = useRef<HTMLElement | null>(null);
 
   // The sticky project rail only earns its scroll-shadow once there is
@@ -342,6 +352,30 @@ export function BoardClient({
       // persist for this session.
     }
   }, [showInactive]);
+
+  // Density persists the same way the collapse state does: read once on
+  // mount, write on every change after that. Held in React state rather than
+  // written straight to the DOM because the toggle's own pressed state and
+  // label read from it.
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDensity(resolveDensity(localStorage.getItem(DENSITY_STORAGE_KEY)));
+    } catch {
+      // Storage inaccessible — keep the default.
+    } finally {
+      hasHydratedDensityRef.current = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedDensityRef.current) return;
+    try {
+      localStorage.setItem(DENSITY_STORAGE_KEY, density);
+    } catch {
+      // Storage write can fail; the preference just won't persist this session.
+    }
+  }, [density]);
 
   useEffect(() => {
     setLocalProjects(projects);
@@ -700,7 +734,7 @@ export function BoardClient({
         onDragEnd={handleDragEnd}
         onDragCancel={() => setActiveDrag(null)}
       >
-        <section className={styles.boardScroll} ref={boardScrollRef}>
+        <section className={styles.boardScroll} ref={boardScrollRef} data-density={density}>
           <div className={styles.board} style={{ gridTemplateColumns }}>
             <div className={styles.cornerCell}>
               <button
@@ -719,6 +753,28 @@ export function BoardClient({
                 <span className={styles.collapseAllLabel}>
                   {allRowsCollapsed ? "Expand all" : "Collapse all"}
                 </span>
+              </button>
+              <button
+                type="button"
+                className={styles.densityBtn}
+                onClick={() => setDensity(nextDensity(density))}
+                aria-pressed={density === "compact"}
+                title={
+                  density === "compact"
+                    ? "Switch to comfortable density"
+                    : "Switch to compact density"
+                }
+                aria-label={
+                  density === "compact"
+                    ? "Switch to comfortable density"
+                    : "Switch to compact density"
+                }
+              >
+                {density === "compact" ? (
+                  <Rows4 size={12} aria-hidden />
+                ) : (
+                  <Rows2 size={12} aria-hidden />
+                )}
               </button>
             </div>
             {LANES.map((lane) => {

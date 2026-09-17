@@ -87,6 +87,35 @@
   /* keeps label readable; can shrink later if needed */
 }
 
+/* Icon-only, sitting beside Collapse all in the 260px corner cell — there is
+   not room for two labelled controls, and the icon flips to show what the
+   button will do next. */
+.densityBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-1);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--s-1);
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+
+.densityBtn:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.densityBtn[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
 .laneHeader {
   position: sticky;
   top: 0;
@@ -154,7 +183,7 @@
   border: 0;
   border-right: 1px solid var(--border);
   border-radius: 0;
-  min-height: 80px;
+  min-height: var(--row-min-h);
   /* Below 1110px the grid overflows and the row labels would scroll away
      with the cards, leaving you looking at cards with no idea whose they
      are. Pin them. Above cards (auto), below the lane header (3). */
@@ -361,7 +390,7 @@
   );
   border: 1px solid color-mix(in srgb, var(--lane-c, var(--border)) calc(var(--heat, 0) * 40%), var(--border));
   border-radius: var(--radius);
-  min-height: 80px;
+  min-height: var(--row-min-h);
   transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
 }
 
@@ -476,7 +505,7 @@
      a card came from at a glance without it drawing the eye. */
   padding: var(--s-2) var(--s-3) var(--s-2) var(--s-2);
   font-size: var(--fs-body);
-  line-height: 1.35;
+  line-height: var(--card-lh);
   color: var(--text);
   text-align: left;
   /* One elevation step above the lane that contains it. Using --bg here made
@@ -789,7 +818,7 @@
 .cardGhost {
   padding: var(--s-2) var(--s-3);
   font-size: var(--fs-body);
-  line-height: 1.35;
+  line-height: var(--card-lh);
   color: var(--text);
   background: var(--elev-3);
   border: 1px solid var(--accent);
@@ -1115,6 +1144,7 @@
 .card:focus-visible,
 .laneHeader:focus-visible,
 .collapseAllBtn:focus-visible,
+.densityBtn:focus-visible,
 .toggleBtn:focus-visible,
 .projectDelete:focus-visible,
 .shareBtn:focus-visible,
@@ -1224,6 +1254,11 @@
   .collapseAllBtn,
   .mobileLaneBtn,
   .inactiveBarBtn {
+    min-height: 44px;
+  }
+
+  .densityBtn {
+    min-width: 44px;
     min-height: 44px;
   }
 
