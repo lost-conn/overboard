@@ -174,15 +174,24 @@ function useHourTick(serverNow: string): Date {
   return now;
 }
 
+// Pointer-first: find the lane under the pointer, then only consider cards
+// that live in that lane. dnd-kit measures droppable rects with
+// getBoundingClientRect, which ignores overflow clipping, so cards scrolled
+// out of view inside a minimized lane in a row above still have rects that
+// extend down over the lane the pointer is actually in. Without the
+// same-lane filter those hidden cards win the collision, become `over`, and
+// auto-scroll then scrolls *their* lane instead of the target one.
 const kanbanCollision: CollisionDetection = (args) => {
   const pointer = pointerWithin(args);
-  const lanehit = pointer.find(
-    (c) => (c.data?.droppableContainer?.data?.current as DragData | undefined)?.type === "lane",
-  );
+  const dragData = (c: (typeof pointer)[number]) =>
+    c.data?.droppableContainer?.data?.current as DragData | undefined;
+  const lanehit = pointer.find((c) => dragData(c)?.type === "lane");
   if (lanehit) {
-    const cards = pointer.filter(
-      (c) => (c.data?.droppableContainer?.data?.current as DragData | undefined)?.type === "card",
-    );
+    const lane = dragData(lanehit) as Extract<DragData, { type: "lane" }>;
+    const cards = pointer.filter((c) => {
+      const d = dragData(c);
+      return d?.type === "card" && d.projectId === lane.projectId && d.lane === lane.lane;
+    });
     if (cards.length) return cards;
     return [lanehit];
   }
