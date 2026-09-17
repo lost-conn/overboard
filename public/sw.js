@@ -1,4 +1,4 @@
-const CACHE_NAME = "overboard-v1";
+const CACHE_NAME = "overboard-v2";
 const SHELL_ASSETS = ["/"];
 
 self.addEventListener("install", (e) => {

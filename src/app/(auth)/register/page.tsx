@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
@@ -25,6 +26,7 @@ export default async function RegisterPage({
   return (
     <div className={styles.shell}>
       <div className={styles.card}>
+        <Image src="/logo.png" alt="" width={40} height={40} className={styles.brand} priority unoptimized />
         <h1 className={styles.title}>Create account</h1>
         <p className={styles.subtitle}>Your projects, only yours.</p>
 

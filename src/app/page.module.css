@@ -19,6 +19,12 @@
   gap: 12px;
 }
 
+.logo {
+  align-self: center;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
 .title {
   font-size: 16px;
   font-weight: 600;

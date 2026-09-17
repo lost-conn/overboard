@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
@@ -68,6 +69,7 @@ export default async function Home() {
     <main className={styles.page}>
       <header className={styles.header}>
         <div className={styles.headerLeft}>
+          <Image src="/logo.png" alt="" width={24} height={24} className={styles.logo} priority unoptimized />
           <h1 className={styles.title}>The Overboard</h1>
           <span className={styles.email}>{user.email}</span>
         </div>
