@@ -30,6 +30,8 @@ model User {
   ideas          Idea[]
   tokens         Token[]
   tags           Tag[]
+  axes           Axis[]
+  components     Component[]
   classes        ProjectClass[]
   classLinks     ProjectClassLink[]
   sharedProjects ProjectShare[] @relation("sharedProjects")
@@ -159,11 +161,108 @@ model Idea {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tags IdeaTag[]
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tags       IdeaTag[]
+  axes       ConceptAxis[]
+  components ConceptComponent[]
 
   @@index([userId])
   @@index([userId, order])
+}
+
+// --- Components -----------------------------------------------------------
+// An Idea is a "concept" in UI copy. A concept is decomposed into components
+// grouped under axes. The load-bearing property is that components are
+// *referenced, not contained*: `social deduction` attached to two concepts is
+// one Component row seen twice, which is what makes overlap computable at all.
+// This is the Tag/IdeaTag shape, deliberately.
+
+// A dimension of decomposition — Mechanic, Setting, Tone, Material. Global to
+// the user rather than scoped to a kind of concept, so that `space` under
+// Setting means the same thing whether the concept is a game or a story. If
+// axes were per-kind the vocabulary would fracture along exactly the seam the
+// feature exists to see across.
+model Axis {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  color       String? // optional hex override; otherwise derived from name
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  components Component[]
+  concepts   ConceptAxis[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([userId, order])
+}
+
+// A reusable piece of a concept, living on exactly one axis. `description` is a
+// deliberately short one-liner shown inline in the combobox; anything longer
+// belongs in contentJson.
+//
+// The unique is [userId, name], not [userId, axisId, name] — matching Tag. One
+// name means one component across the whole vocabulary, so a component cannot
+// be silently duplicated by filing it under a different axis.
+model Component {
+  id          String   @id @default(cuid())
+  userId      String
+  axisId      String
+  name        String // normalized lowercase
+  description String? // short one-liner
+  contentJson String? // ProseMirror JSON for longer notes
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  axis     Axis               @relation(fields: [axisId], references: [id], onDelete: Cascade)
+  concepts ConceptComponent[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([axisId])
+}
+
+// Which axes this concept declares. Exists solely so that "no components on
+// this axis" and "this axis does not apply here" are different states:
+//
+//   row present, no components  -> declared gap. Rendered as an amber dashed
+//                                  slot. This is the nag.
+//   no row                      -> not applicable. Rendered as nothing, and
+//                                  never scored as incomplete.
+//
+// Without this table a fiction concept would look permanently unfinished for
+// having no Mechanic, and the forcing function becomes a lie. Do not fold this
+// into ConceptComponent as an optimisation.
+model ConceptAxis {
+  ideaId String
+  axisId String
+  order  Int    @default(0)
+
+  idea Idea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  axis Axis @relation(fields: [axisId], references: [id], onDelete: Cascade)
+
+  @@id([ideaId, axisId])
+  @@index([axisId])
+}
+
+// The attachment itself. Invariant enforced in the mutation layer: attaching a
+// component always ensures a ConceptAxis row for that component's axis, so a
+// component can never render under an axis the concept doesn't declare.
+model ConceptComponent {
+  ideaId      String
+  componentId String
+  order       Int    @default(0)
+
+  idea      Idea      @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  component Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
+
+  @@id([ideaId, componentId])
+  @@index([componentId])
 }
 
 model Tag {

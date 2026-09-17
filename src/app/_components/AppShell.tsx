@@ -18,6 +18,7 @@ const PRIMARY = [
 const SETTINGS = [
   { href: "/settings/board", label: "Board settings" },
   { href: "/settings/classes", label: "Schedule classes" },
+  { href: "/settings/axes", label: "Component axes" },
   { href: "/settings/tokens", label: "API tokens" },
 ] as const;
 
