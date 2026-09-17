@@ -28,6 +28,55 @@
   /* Cast rightwards off a sticky left rail, so content scrolling underneath
      reads as underneath. Only painted once the board is actually scrolled. */
   --shadow-rail: 6px 0 10px -6px rgb(0 0 0 / 0.16);
+
+  /* --- Type scale -------------------------------------------------------
+     Six steps on a ~1.125 ratio, replacing thirteen ad-hoc sizes that had no
+     ratio between them at all. Rounded to whole or half pixels, which makes
+     the measured ratios wobble between 1.09 and 1.13 — crisp text beats
+     arithmetic purity at these sizes.
+
+     What each step is expected to absorb as files migrate:
+       label  9, 10, 11   (9px was below the readable threshold; it goes up)
+       sm     12
+       body   13, 14      (half a pixel each, in opposite directions)
+       md     15, 16
+       lg     17, 18
+       xl     20, 22
+     Anything without a near neighbour rounds to the scale rather than
+     earning a new token. That is the point of having a scale. */
+  --fs-label: 11px;
+  --fs-sm: 12px;
+  --fs-body: 13.5px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 19px;
+
+  /* --- Spacing ----------------------------------------------------------
+     4px base. Deliberately stops at 8 steps: anything needing more than 40px
+     of air is a layout problem, not a padding problem. The density toggle
+     redefines these within its own scope rather than introducing a second
+     set of literals. */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-7: 32px;
+  --s-8: 40px;
+
+  /* --- Motion -----------------------------------------------------------
+     --t-base is 150ms so migrating the 108 literal `0.15s` transitions is a
+     no-op in duration; only the easing changes. --t-slow matches the 0.3s
+     the heat tints already use. */
+  --t-fast: 100ms;
+  --t-base: 150ms;
+  --t-slow: 300ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* One canonical stack. There were two, differing only in whether they
+     spelled it SFMono-Regular or "SF Mono"; this is their union. */
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -90,4 +139,33 @@ a:hover {
 button {
   font: inherit;
   cursor: pointer;
+}
+
+/* The app had no reduced-motion handling at all: the card drawer slid 640px
+   across the screen, dialogs scaled in, and dnd-kit animated every sort
+   regardless of what the OS had been told.
+
+   The token overrides keep var(--t-*) honest for anything reading it; the
+   universal rule catches the rest, including dnd-kit's inline transitions
+   (a stylesheet !important outranks a non-important inline style) and
+   keyframes declared before these tokens existed. Durations collapse to 1ms
+   rather than 0 so animationend/transitionend still fire and nothing that
+   waits on them hangs. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-fast: 1ms;
+    --t-base: 1ms;
+    --t-slow: 1ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
 }
