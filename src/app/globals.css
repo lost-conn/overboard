@@ -10,6 +10,121 @@
   --warning: #b45309;
   --success: #15803d;
   --radius: 6px;
+
+  /* Surface elevation ladder: page ground -> lane -> card -> card hover.
+     Anything that sits *inside* a surface must use the next step up, so a
+     card never reads as a cut-out in the lane that contains it. In light
+     mode the steps climb toward white; in dark mode away from black. */
+  --elev-0: #fafaf9;
+  --elev-1: #fcfcfb;
+  --elev-2: #ffffff;
+  --elev-3: #ffffff;
+
+  /* Two-layer, scheme-aware card shadow. A single 3% black shadow is
+     invisible on a near-black ground, so the dark values are much stronger. */
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.06), 0 3px 8px rgb(0 0 0 / 0.04);
+  --shadow-card-hover: 0 1px 2px rgb(0 0 0 / 0.08), 0 6px 14px rgb(0 0 0 / 0.08);
+
+  /* Cast rightwards off a sticky left rail, so content scrolling underneath
+     reads as underneath. Only painted once the board is actually scrolled. */
+  --shadow-rail: 6px 0 10px -6px rgb(0 0 0 / 0.16);
+
+  /* --- Type scale -------------------------------------------------------
+     Six steps on a ~1.125 ratio, replacing thirteen ad-hoc sizes that had no
+     ratio between them at all. Rounded to whole or half pixels, which makes
+     the measured ratios wobble between 1.09 and 1.13 — crisp text beats
+     arithmetic purity at these sizes.
+
+     What each step is expected to absorb as files migrate:
+       label  9, 10, 11   (9px was below the readable threshold; it goes up)
+       sm     12
+       body   13, 14      (half a pixel each, in opposite directions)
+       md     15, 16
+       lg     17, 18
+       xl     20, 22
+     Anything without a near neighbour rounds to the scale rather than
+     earning a new token. That is the point of having a scale. */
+  --fs-label: 11px;
+  --fs-sm: 12px;
+  --fs-body: 13.5px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 19px;
+
+  /* --- Spacing ----------------------------------------------------------
+     4px base. Deliberately stops at 8 steps: anything needing more than 40px
+     of air is a layout problem, not a padding problem. The density toggle
+     redefines these within its own scope rather than introducing a second
+     set of literals. */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-7: 32px;
+  --s-8: 40px;
+
+  /* Not spacing, so not on the --s-* scale, but density-dependent all the
+     same: the floor an empty project row collapses to, and how tightly card
+     text sets. */
+  --row-min-h: 80px;
+  --card-lh: 1.35;
+
+  /* --- Motion -----------------------------------------------------------
+     --t-base is 150ms so migrating the 108 literal `0.15s` transitions is a
+     no-op in duration; only the easing changes. --t-slow matches the 0.3s
+     the heat tints already use. */
+  --t-fast: 100ms;
+  --t-base: 150ms;
+  --t-slow: 300ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* One canonical stack. There were two, differing only in whether they
+     spelled it SFMono-Regular or "SF Mono"; this is their union. */
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* --- Lane ramp --------------------------------------------------------
+     Cool -> warm -> resolved, along the board's actual semantic axis.
+     Nothing is urgent in Backlog; Doing is the warmest point; Done cools
+     into the brand teal, which is the first time teal means anything in
+     particular. Failed sits off the ramp entirely.
+
+     Deliberately scheme-independent: these are identities, not surfaces.
+     Contrast is handled where they are used — header text mixes toward
+     --text, and the lane wash is only 5% against the ground. */
+  --lane-backlog: #7c8b94;
+  --lane-todo: #5e97d8;
+  --lane-doing: #e4a44c;
+  --lane-done: #2dd4bf;
+  --lane-failed: #e06a75;
+}
+
+/* --- Density -------------------------------------------------------------
+   Compact shifts each spacing token down exactly one step. Every value below
+   is already a step on the comfortable scale — 4, 8, 12, 16, 20, 24, 32 —
+   so this introduces no new spacing literals at all, which is the whole test
+   of whether the token migration went deep enough. It did: because
+   BoardClient.module.css expresses its padding and gaps as var(--s-*), the
+   entire compact layout falls out of redefining seven custom properties.
+
+   --s-1 stays at 4px: there is no smaller step to shift it to, and inventing
+   one here would be exactly the second set of hardcoded values this is
+   supposed to avoid.
+
+   Scoped to the board rather than :root so the app header, the card drawer
+   and the popovers keep their own rhythm. */
+[data-density="compact"] {
+  --s-2: 4px;
+  --s-3: 8px;
+  --s-4: 12px;
+  --s-5: 16px;
+  --s-6: 20px;
+  --s-7: 24px;
+  --s-8: 32px;
+
+  --row-min-h: 44px;
+  --card-lh: 1.25;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -24,6 +139,17 @@
     --danger: #f87171;
     --warning: #fbbf24;
     --success: #4ade80;
+
+    --elev-0: #0c0a09;
+    --elev-1: #141110;
+    --elev-2: #1f1b19;
+    --elev-3: #2a2523;
+
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 3px 8px rgb(0 0 0 / 0.22);
+    --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.5), 0 8px 18px rgb(0 0 0 / 0.3);
+
+    --shadow-rail: 6px 0 12px -6px rgb(0 0 0 / 0.55);
+
     color-scheme: dark;
   }
 }
@@ -61,4 +187,33 @@ a:hover {
 button {
   font: inherit;
   cursor: pointer;
+}
+
+/* The app had no reduced-motion handling at all: the card drawer slid 640px
+   across the screen, dialogs scaled in, and dnd-kit animated every sort
+   regardless of what the OS had been told.
+
+   The token overrides keep var(--t-*) honest for anything reading it; the
+   universal rule catches the rest, including dnd-kit's inline transitions
+   (a stylesheet !important outranks a non-important inline style) and
+   keyframes declared before these tokens existed. Durations collapse to 1ms
+   rather than 0 so animationend/transitionend still fire and nothing that
+   waits on them hangs. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-fast: 1ms;
+    --t-base: 1ms;
+    --t-slow: 1ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
 }

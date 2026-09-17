@@ -89,3 +89,34 @@
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   text-decoration: underline;
 }
+
+/* Touch: the trigger doubles as the row's schedule *status* ("Omnipresent" /
+   "Out of mind"), so it stays on screen rather than moving into the row
+   overflow menu — the menu's "Schedule…" item opens this same popover. Only
+   the hit area grows; the label stays its original size. */
+@media (hover: none), (pointer: coarse) {
+  .trigger {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-left: var(--s-2);
+    padding-right: var(--s-2);
+  }
+
+  .row,
+  .manageLink {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .row input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+.trigger:focus-visible,
+.manageLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

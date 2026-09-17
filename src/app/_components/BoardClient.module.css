@@ -1,7 +1,34 @@
 .boardScroll {
   flex: 1;
   overflow: auto;
-  padding: 16px 24px 24px;
+  padding: var(--s-4) var(--s-6) var(--s-6);
+}
+
+/* data-scrolled-x is toggled directly on the node by a passive scroll
+   listener in BoardClient — via the DOM rather than React state, so a 20-row
+   board doesn't re-render on every scroll frame. */
+.boardScroll[data-scrolled-x="true"] .projectCell,
+.boardScroll[data-scrolled-x="true"] .cornerCell {
+  box-shadow: var(--shadow-rail);
+}
+
+/* Chromium insets the sticky constraint rectangle by the scroll container's
+   padding, so a `left: 0` rail pins at 24px, not 0 — and lane content slides
+   visibly through the gutter beside it. Bleed the rail's own ground across
+   that gutter so "pinned" actually means pinned. */
+.projectCell::before,
+.cornerCell::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 100%;
+  /* Wider than the 24px gutter it covers: `right: 100%` resolves against the
+     padding box, so an exact 24px can land a sub-pixel short of the edge.
+     The overhang scrolls off-screen and costs nothing. */
+  width: 40px;
+  background: var(--elev-0);
+  pointer-events: none;
 }
 
 .board {
@@ -9,31 +36,39 @@
   /* grid-template-columns is set inline by BoardClient so lane collapses
      can change column widths at runtime. */
   grid-template-columns: 260px repeat(5, minmax(160px, 1fr));
-  gap: 8px;
+  gap: var(--s-2);
 }
 
+/* Pinned in both axes: it is the intersection of the sticky lane-header row
+   and the sticky project rail, so it must outrank both. */
 .cornerCell {
   display: flex;
   align-items: center;
-  padding: 4px 4px 4px 0;
+  padding: var(--s-1) var(--s-1) var(--s-1) 0;
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  background: var(--elev-0);
+  transition: box-shadow var(--t-base) var(--ease);
 }
 
 .collapseAllBtn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-2);
   font: inherit;
-  font-size: 10px;
+  font-size: var(--fs-label);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--s-1);
   cursor: pointer;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
 
 .collapseAllBtn:hover {
@@ -52,38 +87,72 @@
   /* keeps label readable; can shrink later if needed */
 }
 
+/* Icon-only, sitting beside Collapse all in the 260px corner cell — there is
+   not room for two labelled controls, and the icon flips to show what the
+   button will do next. */
+.densityBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-1);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--s-1);
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+
+.densityBtn:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.densityBtn[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
 .laneHeader {
   position: sticky;
   top: 0;
-  padding: 8px 12px;
+  padding: var(--s-2) var(--s-3);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--fs-label);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  /* Mixing the ramp colour toward --text rather than using it raw is what
+     makes one set of scheme-independent hues legible in both schemes: in
+     light mode --text is near-black so the label darkens, in dark mode it is
+     near-white so the label lightens. The hue survives either way. */
+  color: color-mix(in srgb, var(--lane-c, var(--text-dim)) 50%, var(--text));
   background: var(--bg);
   border: 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid color-mix(in srgb, var(--lane-c, var(--border)) 75%, transparent);
   text-align: left;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
-  z-index: 1;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+  /* Above the sticky project rail (2), below the corner cell (4). */
+  z-index: 3;
 }
 
 .laneHeader:hover {
-  color: var(--text);
+  color: color-mix(in srgb, var(--lane-c, var(--text-dim)) 30%, var(--text));
 }
 
 .laneHeaderCollapsed {
   writing-mode: vertical-rl;
   text-orientation: mixed;
-  padding: 10px 4px;
+  padding: var(--s-3) var(--s-1);
   letter-spacing: 0.08em;
 }
 
 .laneHeaderCount {
-  margin-left: 4px;
+  margin-left: var(--s-1);
   font-weight: 500;
   text-transform: none;
   letter-spacing: normal;
@@ -93,25 +162,40 @@
 .laneHeaderCollapsed .laneHeaderCount {
   display: block;
   margin-left: 0;
-  margin-top: 6px;
+  margin-top: var(--s-2);
 }
 
+/* A quiet rail, not a card. The project name is a static label nobody
+   clicks — it has no business being the most elevated surface on the board.
+   Transparent over the page ground, with a single divider separating it
+   from the lanes. */
 .projectCell {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 10px 8px 10px 4px;
-  transition: padding 0.15s;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  min-height: 80px;
+  gap: var(--s-1);
+  padding: var(--s-3) var(--s-2) var(--s-3) var(--s-1);
+  transition: padding var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease);
+  /* Opaque page ground, not `transparent`: the rail is sticky, so cards must
+     scroll *behind* it rather than through it. --elev-0 is the same value the
+     ground paints, so demoting the cell to a rail stays visually identical
+     until the board is actually scrolled sideways. */
+  background: var(--elev-0);
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  min-height: var(--row-min-h);
+  /* Below 1110px the grid overflows and the row labels would scroll away
+     with the cards, leaving you looking at cards with no idea whose they
+     are. Pin them. Above cards (auto), below the lane header (3). */
+  position: sticky;
+  left: 0;
+  z-index: 2;
 }
 
 
 .projectCellCollapsed {
   min-height: 0;
-  padding: 4px 8px 4px 4px;
+  padding: var(--s-1) var(--s-2) var(--s-1) var(--s-1);
 }
 
 /* Minimized/expanded rows: three stacked lines instead of one horizontal
@@ -121,14 +205,14 @@
   align-items: stretch;
   justify-content: flex-start;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px 12px 12px;
+  gap: var(--s-2);
+  padding: var(--s-4) var(--s-3) var(--s-3);
 }
 
 /* Expanded rows have room to breathe; open the cell up a little more. */
 .projectCellExpanded {
-  gap: 10px;
-  padding: 18px 16px 16px;
+  gap: var(--s-3);
+  padding: var(--s-5) var(--s-4) var(--s-4);
 }
 
 .projectLine1,
@@ -136,7 +220,7 @@
 .projectLine3 {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-2);
   min-width: 0;
 }
 
@@ -147,23 +231,23 @@
 }
 
 .projectLine3 {
-  gap: 4px;
+  gap: var(--s-1);
 }
 
 .priorityInput {
   flex-shrink: 0;
   width: 36px;
-  padding: 3px 4px;
+  padding: var(--s-1) var(--s-1);
   font: inherit;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
   text-align: center;
   color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--s-1);
   outline: none;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
   -moz-appearance: textfield;
   appearance: textfield;
 }
@@ -182,19 +266,19 @@
 .priorityInput:focus {
   border-color: var(--accent);
   color: var(--text);
-  background: var(--bg);
+  background: var(--elev-2);
 }
 
 .projectInfo {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--s-1);
   flex: 1;
   min-width: 0;
 }
 
 .projectName {
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: 600;
   letter-spacing: -0.005em;
   overflow: hidden;
@@ -210,37 +294,37 @@
 
 .projectNameInput {
   font: inherit;
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: 600;
   letter-spacing: -0.005em;
   color: var(--text);
-  background: var(--bg);
+  background: var(--elev-2);
   border: 1px solid var(--accent);
-  border-radius: 4px;
-  padding: 1px 4px;
+  border-radius: var(--s-1);
+  /* Off-scale on purpose: this inset and the negative margin below cancel out
+     so the input lands exactly on top of the static text it replaces. They are
+     optical compensation, not spacing. */
+  padding: 1px var(--s-1);
   margin: -2px -5px;
   width: 100%;
   outline: none;
 }
 
 .projectCount {
-  font-size: 11px;
+  font-size: var(--fs-label);
   color: var(--text-dim);
 }
 
 .toggleGroup {
   display: inline-flex;
+  /* The 1px gap and inset are the separator: the group's border-coloured
+     background shows through between the buttons. A hairline, not spacing. */
   gap: 1px;
   padding: 1px;
   background: var(--border);
-  border-radius: 4px;
+  border-radius: var(--s-1);
   flex-shrink: 0;
-  opacity: 0.4;
-  transition: opacity 0.15s;
-}
-
-.projectCell:hover .toggleGroup {
-  opacity: 1;
+  transition: opacity var(--t-base) var(--ease);
 }
 
 .toggleBtn {
@@ -249,24 +333,24 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
+  font-size: var(--fs-label);
   line-height: 1;
   color: var(--text-dim);
-  background: var(--surface);
+  background: var(--elev-2);
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--s-1);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 
 .toggleBtn:hover:not(.toggleBtnActive) {
   color: var(--text);
-  background: var(--bg);
+  background: var(--elev-3);
 }
 
 .toggleBtnActive {
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 14%, var(--elev-2));
 }
 
 .projectDelete {
@@ -279,13 +363,8 @@
   color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
-  opacity: 0;
-  transition: opacity 0.15s, color 0.15s, background 0.15s;
-}
-
-.projectCell:hover .projectDelete {
-  opacity: 1;
+  border-radius: var(--s-1);
+  transition: opacity var(--t-base) var(--ease), color var(--t-base) var(--ease), background var(--t-base) var(--ease);
 }
 
 .projectDelete:hover {
@@ -293,20 +372,33 @@
   background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
+/* A 5% wash of the lane's ramp colour over the lane surface, plus the heat
+   term on top of it. Folding heat in here rather than keeping separate
+   Done/Failed background rules means every lane shares one formula: the hue
+   is the lane's own, and heat only raises its intensity.
+
+   At --heat 0 the heat term collapses to 0%, leaving exactly the 5% wash —
+   so an un-hot lane is pixel-identical to a plain lane of its colour, with
+   no separate "no heat" rule needed. */
 .laneCell {
   position: relative;
-  background: color-mix(in srgb, var(--surface) 50%, transparent);
-  border: 1px solid var(--border);
+  --lane-wash: color-mix(in srgb, var(--lane-c, var(--elev-1)) 5%, var(--elev-1));
+  background: color-mix(
+    in srgb,
+    var(--lane-c, var(--elev-1)) calc(5% + var(--heat, 0) * 10%),
+    var(--elev-1)
+  );
+  border: 1px solid color-mix(in srgb, var(--lane-c, var(--border)) calc(var(--heat, 0) * 40%), var(--border));
   border-radius: var(--radius);
-  min-height: 80px;
-  transition: background 0.15s, border-color 0.15s;
+  min-height: var(--row-min-h);
+  transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
 }
 
 .laneInner {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px;
+  gap: var(--s-2);
+  padding: var(--s-2);
   height: 100%;
 }
 
@@ -333,36 +425,32 @@
      grid row is shaped by them. No extra constraint needed here. */
 }
 
-/* Failed/Done lanes: tint scales with activity via a --heat custom property
-   (0..1) set inline per-project in LaneCell. At heat 0 the color-mix
-   percentage collapses to 0%, so the cell is pixel-identical to a neutral
-   .laneCell — no separate "no heat" rule needed. */
-.laneCellFailed {
-  background: color-mix(
-    in srgb,
-    var(--danger) calc(var(--heat, 0) * 10%),
-    color-mix(in srgb, var(--surface) 50%, transparent)
-  );
-  border-color: color-mix(in srgb, var(--danger) calc(var(--heat, 0) * 40%), var(--border));
-  transition: background 0.3s, border-color 0.3s;
+/* Heat (a 0..1 custom property set inline per project row in LaneCell) is
+   mixed by the shared .laneCell rule above. This only slows the tint down:
+   a change in activity should ease rather than snap, where a drag-over
+   highlight needs to be immediate. Applied to whichever lanes carry heat
+   rather than naming them, so Backlog — which deliberately has none — keeps
+   the snappy base timing. */
+.laneCellHeated {
+  transition: background var(--t-slow) var(--ease), border-color var(--t-slow) var(--ease);
 }
 
-.laneCellDone {
-  background: color-mix(
-    in srgb,
-    var(--success) calc(var(--heat, 0) * 10%),
-    color-mix(in srgb, var(--surface) 50%, transparent)
-  );
-  border-color: color-mix(in srgb, var(--success) calc(var(--heat, 0) * 40%), var(--border));
-  transition: background 0.3s, border-color 0.3s;
+/* Backlog never tints. LaneCell already declines to pass it a heat value, but
+   stating it here too means the exemption survives anyone later deciding to
+   set --heat on every lane: a big backlog is this app's normal state, and a
+   row that is permanently hot says nothing at all. */
+.laneCellBacklog {
+  background: var(--lane-wash);
+  border-color: var(--border);
 }
 
 /* Declared after the heat-tint rules (same specificity as each) so an
    active drag-over always wins the background/border, regardless of a
-   Done/Failed lane's current tint. */
+   lane's current tint. Uses the lane's own ramp colour rather than the
+   generic teal accent — the ramp already says which lane this is. */
 .laneCellOver {
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--lane-c, var(--accent)) 10%, var(--elev-2));
+  border-color: color-mix(in srgb, var(--lane-c, var(--accent)) 45%, var(--border));
 }
 
 /* Project row collapsed: lane cells shrink to a transparent strip and hide
@@ -376,7 +464,7 @@
 /* Lane column collapsed via header click: hide cards across all rows, keep a
    thin strip so the column is still visually present. */
 .laneCellColCollapsed {
-  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  background: color-mix(in srgb, var(--lane-c, var(--elev-2)) 8%, color-mix(in srgb, var(--elev-2) 40%, var(--elev-1)));
 }
 
 .laneCellCollapsedCount {
@@ -385,20 +473,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--fs-label);
   font-weight: 600;
-  color: var(--text-dim);
-}
-
-.laneCellCollapsedCountFailed {
-  color: var(--danger);
+  /* A collapsed column is a 44px strip with nothing but this number in it.
+     Carrying the ramp here is the only thing telling you which lane it is. */
+  color: color-mix(in srgb, var(--lane-c, var(--text-dim)) 50%, var(--text));
 }
 
 .laneEmpty {
   flex: 1;
-  min-height: 24px;
+  min-height: var(--s-6);
   border: 1px dashed color-mix(in srgb, var(--border) 80%, transparent);
-  border-radius: 4px;
+  border-radius: var(--s-1);
 }
 
 /* The top strip (18px) plus the flex gap (6px) it introduces already equal
@@ -412,54 +498,67 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 5px;
-  padding: 8px 10px;
-  font-size: 13px;
-  line-height: 1.35;
+  gap: var(--s-1);
+  /* 2px of the lane's ramp colour on the leading edge. padding-left drops to
+     8px so the border doesn't shift the content. Restrained on purpose: this
+     is orientation, not decoration — you should be able to tell which column
+     a card came from at a glance without it drawing the eye. */
+  padding: var(--s-2) var(--s-3) var(--s-2) var(--s-2);
+  font-size: var(--fs-body);
+  line-height: var(--card-lh);
   color: var(--text);
   text-align: left;
-  background: var(--bg);
+  /* One elevation step above the lane that contains it. Using --bg here made
+     the card identical to the page ground, so it read as a hole in the lane
+     rather than an object on it. */
+  background: var(--elev-2);
   border: 1px solid var(--border);
-  border-radius: 5px;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03);
+  /* After the `border` shorthand, or it gets reset by it. */
+  border-left: 2px solid var(--lane-c, var(--border));
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
   cursor: pointer;
   /* Allow native vertical scroll to pass through; the TouchSensor long-press
      (220ms) still initiates a drag without fighting the scroll gesture. */
   touch-action: pan-y;
   transition:
-    border-color 0.15s,
-    box-shadow 0.15s,
-    transform 0.05s;
+    background var(--t-base) var(--ease),
+    border-color var(--t-base) var(--ease),
+    box-shadow var(--t-base) var(--ease),
+    transform var(--t-fast) var(--ease);
 }
 
 .cardHead {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--s-2);
 }
 
-/* Due-date urgency tiers. Left border tint + matching chip; padding-left
-   trims 3px so the added border doesn't shift the content. */
+/* Due-date urgency tiers: they recolour the card's 2px leading edge and match
+   the chip. Same width as the lane ramp border it replaces, so padding-left
+   stays on the scale and the content doesn't shift between tiers. */
 .cardDueSoon {
-  padding-left: 7px;
-  border-left: 3px solid var(--warning);
+  padding-left: var(--s-2);
+  border-left: 2px solid var(--warning);
 }
 
 .cardDueImminent {
-  padding-left: 7px;
-  border-left: 3px solid color-mix(in srgb, var(--warning) 35%, var(--danger));
+  padding-left: var(--s-2);
+  border-left: 2px solid color-mix(in srgb, var(--warning) 35%, var(--danger));
 }
 
 .cardOverdue {
-  padding-left: 7px;
-  border-left: 3px solid var(--danger);
+  padding-left: var(--s-2);
+  border-left: 2px solid var(--danger);
 }
 
+/* Pill chips keep a 1px vertical inset: they are sized by line-height, and a
+   4px step would make them taller than the text they annotate. */
 .dueChip {
   flex-shrink: 0;
-  padding: 1px 6px;
-  font-size: 10px;
+  padding: 1px var(--s-2);
+  font-size: var(--fs-label);
   font-weight: 600;
   line-height: 1.5;
   white-space: nowrap;
@@ -475,7 +574,7 @@
   justify-content: center;
   width: 16px;
   height: 16px;
-  font-size: 11px;
+  font-size: var(--fs-label);
   line-height: 1;
   color: var(--text-dim);
   background: color-mix(in srgb, var(--text-dim) 14%, transparent);
@@ -500,7 +599,7 @@
 .cardTags {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px;
+  gap: var(--s-1);
 }
 
 /* Failed cards: muted, non-interactive drag-wise. Rendered as a
@@ -509,13 +608,13 @@
 .cardFailedWrap {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--s-1);
 }
 
 .cardFailed {
   opacity: 0.72;
-  padding-left: 7px;
-  border-left: 3px solid var(--danger);
+  padding-left: var(--s-2);
+  border-left: 2px solid var(--danger);
   cursor: pointer;
 }
 
@@ -525,14 +624,14 @@
 
 .rescueBtn {
   align-self: flex-end;
-  padding: 3px 9px;
-  font-size: 11px;
+  padding: var(--s-1) var(--s-2);
+  font-size: var(--fs-label);
   font-weight: 600;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   border-radius: 999px;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
 
 .rescueBtn:hover {
@@ -542,8 +641,8 @@
 
 .rescuedChip {
   align-self: flex-start;
-  padding: 1px 6px;
-  font-size: 10px;
+  padding: 1px var(--s-2);
+  font-size: var(--fs-label);
   font-weight: 600;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -552,37 +651,37 @@
 
 .filterEmpty {
   grid-column: 1 / -1;
-  padding: 24px 12px;
+  padding: var(--s-6) var(--s-3);
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-body);
   text-align: center;
 }
 
 .filterBarSlot {
-  padding: 12px 24px 0;
+  padding: var(--s-3) var(--s-6) 0;
 }
 
 .inactiveBar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 24px 0;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-6) 0;
 }
 
 .inactiveBarText {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text-dim);
 }
 
 .inactiveBarBtn {
-  padding: 3px 10px;
-  font-size: 12px;
+  padding: var(--s-1) var(--s-3);
+  font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   border-radius: 999px;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
 
 .inactiveBarBtn:hover {
@@ -593,14 +692,14 @@
 .scheduleRow {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-2);
   min-width: 0;
 }
 
 .projectInactiveBadge {
   flex-shrink: 0;
-  padding: 1px 6px;
-  font-size: 9px;
+  padding: 1px var(--s-2);
+  font-size: var(--fs-label);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -613,9 +712,15 @@
   opacity: 0.5;
 }
 
+/* Deliberately leaves border-left alone: the leading edge belongs to whoever
+   owns it — the lane ramp normally, a due tier when one applies — and
+   .card:hover outranks the due-tier rules on specificity. */
 .card:hover {
-  border-color: var(--text-dim);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+  background: var(--elev-3);
+  border-top-color: var(--text-dim);
+  border-right-color: var(--text-dim);
+  border-bottom-color: var(--text-dim);
+  box-shadow: var(--shadow-card-hover);
 }
 
 .card:active {
@@ -632,8 +737,11 @@
   flex-shrink: 0;
   width: 6px;
   height: 6px;
-  margin-top: 5px;
-  background: var(--accent);
+  margin-top: var(--s-1);
+  /* "This card has a body" — nothing to do with lanes or with primary
+     actions. It was one of the dozen jobs teal was doing; now that the ramp
+     carries lane meaning, this goes back to being quiet chrome. */
+  background: var(--text-dim);
   border-radius: 50%;
   opacity: 0.7;
 }
@@ -641,24 +749,24 @@
 .addBtn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  font-size: 12px;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-2);
+  font-size: var(--fs-sm);
   color: var(--text-dim);
   background: transparent;
   border: 1px dashed transparent;
-  border-radius: 4px;
+  border-radius: var(--s-1);
   text-align: left;
   transition:
-    color 0.15s,
-    border-color 0.15s,
-    background 0.15s;
+    color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease);
 }
 
 .addBtn:hover {
   color: var(--text);
   border-color: var(--border);
-  background: var(--bg);
+  background: var(--elev-2);
 }
 
 /* Slim hover strip above a lane's card list — reserves its height at all
@@ -674,24 +782,21 @@
   color: var(--text-dim);
   background: transparent;
   border: 1px dashed transparent;
-  border-radius: 4px;
-  opacity: 0;
+  border-radius: var(--s-1);
+  /* Persistent but quiet on touch; the fine-pointer block below hides it
+     until the lane is hovered. */
+  opacity: 0.55;
   transition:
-    opacity 0.15s,
-    color 0.15s,
-    border-color 0.15s,
-    background 0.15s;
-}
-
-.laneInner:hover .addTopStrip,
-.addTopStrip:focus-visible {
-  opacity: 1;
+    opacity var(--t-base) var(--ease),
+    color var(--t-base) var(--ease),
+    border-color var(--t-base) var(--ease),
+    background var(--t-base) var(--ease);
 }
 
 .addTopStrip:hover {
   color: var(--text);
   border-color: var(--border);
-  background: var(--bg);
+  background: var(--elev-2);
 }
 
 .addForm {
@@ -700,43 +805,43 @@
 
 .addInput {
   width: 100%;
-  padding: 6px 10px;
+  padding: var(--s-2) var(--s-3);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--fs-body);
   color: var(--text);
-  background: var(--bg);
+  background: var(--elev-2);
   border: 1px solid var(--accent);
-  border-radius: 4px;
+  border-radius: var(--s-1);
   outline: none;
 }
 
 .cardGhost {
-  padding: 8px 10px;
-  font-size: 13px;
-  line-height: 1.35;
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-body);
+  line-height: var(--card-lh);
   color: var(--text);
-  background: var(--bg);
+  background: var(--elev-3);
   border: 1px solid var(--accent);
-  border-radius: 5px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card-hover);
   cursor: grabbing;
   max-width: 280px;
 }
 
 .projectGhost {
-  padding: 10px 14px;
-  font-size: 14px;
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-md);
   font-weight: 600;
   color: var(--text);
-  background: var(--surface);
+  background: var(--elev-3);
   border: 1px solid var(--accent);
   border-radius: var(--radius);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-card-hover);
   cursor: grabbing;
 }
 
 .ownerBadge {
-  font-size: 10px;
+  font-size: var(--fs-label);
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -754,13 +859,8 @@
   color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
-  opacity: 0;
-  transition: opacity 0.15s, color 0.15s, background 0.15s;
-}
-
-.projectCell:hover .shareBtn {
-  opacity: 1;
+  border-radius: var(--s-1);
+  transition: opacity var(--t-base) var(--ease), color var(--t-base) var(--ease), background var(--t-base) var(--ease);
 }
 
 .shareBtn:hover {
@@ -778,8 +878,8 @@
   color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
+  border-radius: var(--s-1);
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
 
 .pinBtn:hover:not(:disabled) {
@@ -796,7 +896,7 @@
 }
 
 .cardAssignee {
-  font-size: 10px;
+  font-size: var(--fs-label);
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -813,7 +913,7 @@
 
 @media (max-width: 700px) {
   .boardScroll {
-    padding: 12px 12px 24px;
+    padding: var(--s-3) var(--s-3) var(--s-6);
   }
 
   /* Override the runtime grid-template-columns set inline by BoardClient.
@@ -821,7 +921,7 @@
      project) already produces the project-stacked layout. */
   .board {
     grid-template-columns: 1fr !important;
-    gap: 10px;
+    gap: var(--s-3);
   }
 
   .cornerCell,
@@ -833,24 +933,39 @@
     display: none;
   }
 
+  /* Single column: nothing scrolls sideways, so there is no rail to pin —
+     and the divider belongs under the project, not beside it. */
   .projectCell {
-    padding: 8px 10px;
+    padding: var(--s-2) var(--s-3);
     min-height: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    position: static;
+    box-shadow: none;
+  }
+
+  .boardScroll[data-scrolled-x="true"] .projectCell {
+    box-shadow: none;
+  }
+
+  .projectCell::before {
+    display: none;
   }
 
   .laneMobileLabel {
     display: inline-flex;
     align-items: center;
     align-self: flex-start;
-    padding: 2px 6px;
-    font-size: 10px;
+    padding: 2px var(--s-2);
+    font-size: var(--fs-label);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--text-dim);
-    background: var(--surface);
+    color: color-mix(in srgb, var(--lane-c, var(--text-dim)) 50%, var(--text));
+    background: var(--elev-2);
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-left: 2px solid var(--lane-c, var(--border));
+    border-radius: var(--s-1);
   }
 
   /* Done/Failed lanes use absolute positioning to share height with siblings
@@ -879,33 +994,36 @@
   }
 
   .filterBarSlot {
-    padding: 10px 12px 0;
+    padding: var(--s-3) var(--s-3) 0;
   }
 
   .inactiveBar {
-    padding: 8px 12px 0;
+    padding: var(--s-2) var(--s-3) 0;
   }
 
   .mobileLaneBar {
     display: flex;
-    gap: 6px;
-    padding: 10px 12px 0;
+    gap: var(--s-2);
+    padding: var(--s-3) var(--s-3) 0;
   }
 
+  /* The lane bar is how you switch lanes on a phone, where the desktop
+     header row is hidden entirely — so it has to carry the ramp too. */
   .mobileLaneBtn {
     flex: 1;
-    padding: 6px 4px;
+    padding: var(--s-2) var(--s-1);
     font: inherit;
-    font-size: 10px;
+    font-size: var(--fs-label);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--text);
-    background: var(--surface);
+    color: color-mix(in srgb, var(--lane-c, var(--text)) 50%, var(--text));
+    background: color-mix(in srgb, var(--lane-c, var(--elev-2)) 8%, var(--elev-2));
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-bottom: 2px solid color-mix(in srgb, var(--lane-c, var(--border)) 75%, transparent);
+    border-radius: var(--s-1);
     cursor: pointer;
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
   }
 
   .mobileLaneBtnCollapsed {
@@ -919,9 +1037,9 @@
     align-items: center;
     justify-content: center;
     min-width: 14px;
-    margin-left: 4px;
-    padding: 0 4px;
-    font-size: 9px;
+    margin-left: var(--s-1);
+    padding: 0 var(--s-1);
+    font-size: var(--fs-label);
     border-radius: 999px;
     background: color-mix(in srgb, currentColor 18%, transparent);
     color: inherit;
@@ -932,12 +1050,222 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 6px 8px;
+    padding: var(--s-2) var(--s-2);
     color: var(--text);
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--s-1);
     cursor: pointer;
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+  }
+}
+
+/* ------------------------------------------------------------------------
+   Row overflow menu — the touch replacement for the row's icon buttons.
+   Rendered at every width and hidden on fine pointers, so there is no
+   layout-dependent JS and nothing to get wrong at hydration.
+   ------------------------------------------------------------------------ */
+.rowMenuBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin-left: auto;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--s-1);
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+
+.rowMenuBtn:hover:not(:disabled) {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text-dim) 10%, transparent);
+}
+
+.rowMenuBtn:disabled {
+  opacity: 0.5;
+}
+
+.rowMenu {
+  min-width: 200px;
+  padding: var(--s-1);
+  font-size: var(--fs-body);
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 1.5);
+  box-shadow: var(--shadow-card-hover);
+  z-index: 60;
+}
+
+.rowMenuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  /* 44px even inside the menu: this is the touch surface. */
+  min-height: 44px;
+  padding: 0 var(--s-2);
+  font: inherit;
+  font-size: var(--fs-body);
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: var(--s-1);
+  transition: background var(--t-fast) var(--ease);
+}
+
+.rowMenuItem:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.rowMenuItemDanger {
+  color: var(--danger);
+}
+
+.rowMenuItemDanger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.rowMenuDivider {
+  height: 1px;
+  margin: var(--s-1) 0;
+  background: var(--border);
+}
+
+/* ------------------------------------------------------------------------
+   Focus. Every interactive surface on the board gets the same visible ring —
+   focus is one of the jobs teal keeps, because it is a state rather than
+   decoration.
+   ------------------------------------------------------------------------ */
+.card:focus-visible,
+.laneHeader:focus-visible,
+.collapseAllBtn:focus-visible,
+.densityBtn:focus-visible,
+.toggleBtn:focus-visible,
+.projectDelete:focus-visible,
+.shareBtn:focus-visible,
+.pinBtn:focus-visible,
+.rowMenuBtn:focus-visible,
+.rowMenuItem:focus-visible,
+.addBtn:focus-visible,
+.addTopStrip:focus-visible,
+.rescueBtn:focus-visible,
+.inactiveBarBtn:focus-visible,
+.mobileLaneBtn:focus-visible,
+.mobileCollapseAllBtn:focus-visible,
+.priorityInput:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Keyboard focus must still reveal the strip even where hover hides it. */
+.addTopStrip:focus-visible {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------------------
+   Fine pointers only: the hover restraint. Everything above ships visible,
+   and this block takes it away again for devices that have a hover to bring
+   it back with. A phone never matches, so nothing is ever unreachable there.
+   ------------------------------------------------------------------------ */
+@media (hover: hover) and (pointer: fine) {
+  .rowMenuBtn {
+    display: none;
+  }
+
+  .projectDelete,
+  .shareBtn {
+    opacity: 0;
+  }
+
+  .toggleGroup {
+    opacity: 0.4;
+  }
+
+  .addTopStrip {
+    opacity: 0;
+  }
+
+  .projectCell:hover .projectDelete,
+  .projectCell:hover .shareBtn,
+  .projectCell:hover .toggleGroup,
+  .projectDelete:focus-visible,
+  .shareBtn:focus-visible,
+  .toggleGroup:focus-within {
+    opacity: 1;
+  }
+
+  .laneInner:hover .addTopStrip,
+  .addTopStrip:focus-visible {
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------------
+   Coarse pointers: the icon buttons the overflow menu now carries step
+   aside, and everything still on screen grows to a 44px target. The visual
+   icons stay their original size — only the hit area changes.
+   ------------------------------------------------------------------------ */
+@media (hover: none), (pointer: coarse) {
+  .shareBtn,
+  .projectDelete,
+  .pinBtn {
+    display: none;
+  }
+
+  .toggleBtn {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--s-1);
+  }
+
+  .priorityInput {
+    width: 44px;
+    min-height: 44px;
+  }
+
+  .addBtn,
+  .addTopStrip {
+    min-height: 44px;
+  }
+
+  .addTopStrip {
+    height: auto;
+  }
+
+  .card {
+    min-height: 44px;
+  }
+
+  .rescueBtn {
+    min-height: 44px;
+    padding-left: var(--s-4);
+    padding-right: var(--s-4);
+  }
+
+  .laneHeader {
+    min-height: 44px;
+  }
+
+  .collapseAllBtn,
+  .mobileLaneBtn,
+  .inactiveBarBtn {
+    min-height: 44px;
+  }
+
+  .densityBtn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Icon-only, so it needs the width as well — min-height alone left it a
+     32px-wide sliver. */
+  .mobileCollapseAllBtn {
+    min-width: 44px;
+    min-height: 44px;
   }
 }

@@ -7,40 +7,6 @@
   gap: 24px;
 }
 
-.header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.title {
-  font-size: 22px;
-  font-weight: 600;
-}
-
-.subtitle {
-  font-size: 14px;
-  color: var(--text-dim);
-  margin-top: 4px;
-}
-
-.headerLinks {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-}
-
-.back {
-  font-size: 13px;
-  color: var(--text-dim);
-  text-decoration: none;
-}
-
-.back:hover {
-  color: var(--text);
-}
-
 .card {
   background: var(--surface);
   border: 1px solid var(--border);

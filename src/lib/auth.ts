@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
@@ -72,12 +73,15 @@ export async function clearSessionCookie(): Promise<void> {
   store.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
 }
 
-export async function currentSession(): Promise<SessionWithUser | null> {
+/** Deduped per request: the (app) layout resolves the session for the header
+    and the page under it resolves it again for its own data. Without the
+    cache that is two session lookups (and two slide-writes) per render. */
+export const currentSession = cache(async (): Promise<SessionWithUser | null> => {
   const store = await cookies();
   const id = store.get(SESSION_COOKIE)?.value;
   if (!id) return null;
   return validateSessionId(id);
-}
+});
 
 export async function currentUser(): Promise<User | null> {
   const session = await currentSession();

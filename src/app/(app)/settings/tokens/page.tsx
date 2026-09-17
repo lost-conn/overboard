@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentSession } from "@/lib/auth";
 import { listTokens } from "@/lib/tokens";
@@ -7,6 +6,7 @@ import {
   mintTokenAction,
   revokeTokenAction,
 } from "@/lib/actions/tokens";
+import { PageHeader } from "../../../_components/AppShell";
 import { RestoreBackup } from "./RestoreBackup";
 import styles from "./tokens.module.css";
 
@@ -21,25 +21,10 @@ export default async function TokensPage() {
 
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>API tokens</h1>
-          <p className={styles.subtitle}>
-            For MCP and other programmatic access. Each token grants full access to your data.
-          </p>
-        </div>
-        <div className={styles.headerLinks}>
-          <Link className={styles.back} href="/settings/board">
-            Board settings
-          </Link>
-          <Link className={styles.back} href="/settings/classes">
-            Classes
-          </Link>
-          <Link className={styles.back} href="/">
-            ← Board
-          </Link>
-        </div>
-      </header>
+      <PageHeader
+        title="API tokens"
+        subtitle="For MCP and other programmatic access. Each token grants full access to your data."
+      />
 
       {freshlyMinted ? (
         <div className={styles.flash}>

@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentSession } from "@/lib/auth";
 import { setFailedWindowDaysAction } from "@/lib/actions/settings";
+import { PageHeader } from "../../../_components/AppShell";
 import styles from "./board.module.css";
 
 export default async function BoardSettingsPage() {
@@ -10,25 +10,10 @@ export default async function BoardSettingsPage() {
 
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Board settings</h1>
-          <p className={styles.subtitle}>
-            Controls for how the board handles cards that miss their due date.
-          </p>
-        </div>
-        <div className={styles.headerLinks}>
-          <Link className={styles.back} href="/settings/tokens">
-            Tokens
-          </Link>
-          <Link className={styles.back} href="/settings/classes">
-            Classes
-          </Link>
-          <Link className={styles.back} href="/">
-            ← Board
-          </Link>
-        </div>
-      </header>
+      <PageHeader
+        title="Board settings"
+        subtitle="Controls for how the board handles cards that miss their due date."
+      />
 
       <section className={styles.card}>
         <div className={styles.cardTitle}>Failed lane window</div>

@@ -25,7 +25,23 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, Plus, Rows3, Rows4, Share2, X } from "lucide-react";
+import {
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Clock,
+  MoreHorizontal,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Rows2,
+  Rows3,
+  Rows4,
+  Share2,
+  X,
+} from "lucide-react";
+import * as Popover from "@radix-ui/react-popover";
 import {
   createCardAction,
   deleteCardAction,
@@ -50,6 +66,51 @@ import {
   useTagFilter,
 } from "./TagFilterBar";
 import { useBoardEvents } from "./useBoardEvents";
+import {
+  COLLAPSED_LANES_STORAGE_KEY,
+  DEFAULT_COLLAPSED_LANES,
+  LANES,
+  LANE_LABELS,
+  LANE_RAMP,
+  resolveCollapsedLanes,
+  type LaneKey,
+} from "@/lib/board/lanes";
+import {
+  DEFAULT_DENSITY,
+  DENSITY_STORAGE_KEY,
+  nextDensity,
+  resolveDensity,
+  type Density,
+} from "@/lib/board/density";
+
+// The ramp reaches the stylesheet as a single inherited custom property, so
+// every descendant (header text and underline, card leading edge, drop
+// target, collapsed-column count) reads one value and nothing has to know
+// the lane it is in.
+type LaneVars = CSSProperties & Record<string, string | number>;
+
+function laneVars(lane: LaneKey, heat?: number): LaneVars {
+  const vars: LaneVars = { "--lane-c": LANE_RAMP[lane] };
+  if (heat !== undefined) vars["--heat"] = heat;
+  return vars;
+}
+
+// Backlog is the one lane with no heat. It is deliberately absent rather than
+// zero: a big backlog is this app's normal state, not a problem to flag.
+function laneHeat(project: ClientProject, lane: LaneKey): number | undefined {
+  switch (lane) {
+    case "FAILED":
+      return project.failedHeat;
+    case "DONE":
+      return project.doneHeat;
+    case "DOING":
+      return project.doingHeat;
+    case "TODO":
+      return project.todoHeat;
+    default:
+      return undefined;
+  }
+}
 import { describeDue, type DueTier } from "@/lib/board/due";
 import { describeRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
 import {
@@ -59,21 +120,8 @@ import {
 } from "@/lib/board/schedule";
 import styles from "./BoardClient.module.css";
 
-const LANES = ["BACKLOG", "TODO", "DOING", "DONE", "FAILED"] as const;
-type LaneKey = (typeof LANES)[number];
-
-const LANE_LABELS: Record<LaneKey, string> = {
-  BACKLOG: "Backlog",
-  TODO: "To do",
-  DOING: "Doing",
-  DONE: "Done",
-  FAILED: "Failed",
-};
-
 type ViewState = "collapsed" | "minimized" | "expanded";
 
-const DEFAULT_COLLAPSED_LANES: LaneKey[] = ["DONE", "FAILED"];
-const COLLAPSED_LANES_STORAGE_KEY = "overboard.collapsedLanes";
 const SHOW_INACTIVE_STORAGE_KEY = "overboard.showInactive";
 
 export type ClientTag = { id: string; name: string; color: string };
@@ -108,6 +156,8 @@ export type ClientProject = {
   schedules: ClassSchedule[];
   failedHeat: number;
   doneHeat: number;
+  doingHeat: number;
+  todoHeat: number;
 };
 
 export type ClientClass = { id: string; name: string };
@@ -224,29 +274,45 @@ export function BoardClient({
     () => new Set(DEFAULT_COLLAPSED_LANES),
   );
   const [showInactive, setShowInactive] = useState(false);
+  const [density, setDensity] = useState<Density>(DEFAULT_DENSITY);
   // Once localStorage has been read (or the read failed), further changes to
   // collapsedLanes should persist. Skipping writes until then avoids
   // clobbering a stored value with the default before hydration runs.
   const hasHydratedLanesRef = useRef(false);
   const hasHydratedShowInactiveRef = useRef(false);
+  const hasHydratedDensityRef = useRef(false);
+  const boardScrollRef = useRef<HTMLElement | null>(null);
+
+  // The sticky project rail only earns its scroll-shadow once there is
+  // something scrolled underneath it. Toggled straight on the DOM node
+  // instead of through React state so scrolling a 20-row board doesn't
+  // re-render the whole grid on every frame.
+  useEffect(() => {
+    const el = boardScrollRef.current;
+    if (!el) return;
+    const sync = () => {
+      el.dataset.scrolledX = el.scrollLeft > 0 ? "true" : "false";
+    };
+    sync();
+    el.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync);
+    return () => {
+      el.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+    };
+  }, []);
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(COLLAPSED_LANES_STORAGE_KEY);
-      if (raw) {
-        const parsed: unknown = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          const valid = parsed.filter(
-            (l): l is LaneKey => typeof l === "string" && (LANES as readonly string[]).includes(l),
-          );
-          // One-time sync from an external store (localStorage) on mount.
-          // eslint-disable-next-line react-hooks/set-state-in-effect
-          setCollapsedLanes(new Set(valid));
-        }
-      }
+      // resolveCollapsedLanes keeps any stored preference intact (including an
+      // empty array) and only falls back to the default when there is none, so
+      // changing DEFAULT_COLLAPSED_LANES never rewrites an existing board.
+      const stored = resolveCollapsedLanes(localStorage.getItem(COLLAPSED_LANES_STORAGE_KEY));
+      // One-time sync from an external store (localStorage) on mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCollapsedLanes(new Set(stored));
     } catch {
-      // Invalid JSON or storage inaccessible (private mode, disabled, etc.) —
-      // fall back to the default collapsed set.
+      // Storage inaccessible (private mode, disabled, etc.) — keep the default.
     } finally {
       hasHydratedLanesRef.current = true;
     }
@@ -286,6 +352,30 @@ export function BoardClient({
       // persist for this session.
     }
   }, [showInactive]);
+
+  // Density persists the same way the collapse state does: read once on
+  // mount, write on every change after that. Held in React state rather than
+  // written straight to the DOM because the toggle's own pressed state and
+  // label read from it.
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDensity(resolveDensity(localStorage.getItem(DENSITY_STORAGE_KEY)));
+    } catch {
+      // Storage inaccessible — keep the default.
+    } finally {
+      hasHydratedDensityRef.current = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedDensityRef.current) return;
+    try {
+      localStorage.setItem(DENSITY_STORAGE_KEY, density);
+    } catch {
+      // Storage write can fail; the preference just won't persist this session.
+    }
+  }, [density]);
 
   useEffect(() => {
     setLocalProjects(projects);
@@ -612,6 +702,7 @@ export function BoardClient({
               key={lane}
               type="button"
               className={`${styles.mobileLaneBtn} ${isCollapsed ? styles.mobileLaneBtnCollapsed : ""}`}
+              style={laneVars(lane)}
               onClick={() => toggleLaneCollapsed(lane)}
               aria-pressed={isCollapsed}
             >
@@ -643,7 +734,7 @@ export function BoardClient({
         onDragEnd={handleDragEnd}
         onDragCancel={() => setActiveDrag(null)}
       >
-        <section className={styles.boardScroll}>
+        <section className={styles.boardScroll} ref={boardScrollRef} data-density={density}>
           <div className={styles.board} style={{ gridTemplateColumns }}>
             <div className={styles.cornerCell}>
               <button
@@ -663,6 +754,28 @@ export function BoardClient({
                   {allRowsCollapsed ? "Expand all" : "Collapse all"}
                 </span>
               </button>
+              <button
+                type="button"
+                className={styles.densityBtn}
+                onClick={() => setDensity(nextDensity(density))}
+                aria-pressed={density === "compact"}
+                title={
+                  density === "compact"
+                    ? "Switch to comfortable density"
+                    : "Switch to compact density"
+                }
+                aria-label={
+                  density === "compact"
+                    ? "Switch to comfortable density"
+                    : "Switch to compact density"
+                }
+              >
+                {density === "compact" ? (
+                  <Rows4 size={12} aria-hidden />
+                ) : (
+                  <Rows2 size={12} aria-hidden />
+                )}
+              </button>
             </div>
             {LANES.map((lane) => {
               const isCollapsed = collapsedLanes.has(lane);
@@ -671,6 +784,7 @@ export function BoardClient({
                   key={lane}
                   type="button"
                   className={`${styles.laneHeader} ${isCollapsed ? styles.laneHeaderCollapsed : ""}`}
+                  style={laneVars(lane)}
                   onClick={() => toggleLaneCollapsed(lane)}
                   aria-pressed={isCollapsed}
                   title={
@@ -841,6 +955,10 @@ function ProjectRow({
     });
   };
 
+  // Lifted out of SchedulePicker so the touch overflow menu can open it,
+  // rather than nesting a popover inside a popover.
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+
   const [renamingName, setRenamingName] = useState<string | null>(null);
   const commitRename = () => {
     if (renamingName === null) return;
@@ -908,6 +1026,8 @@ function ProjectRow({
         value={{ omnipresent: project.omnipresent, classIds: project.classIds }}
         classes={classes}
         onChange={(next) => onScheduleChange(project.id, next)}
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
       />
       {!active ? <span className={styles.projectInactiveBadge}>inactive</span> : null}
       {!isRowCollapsed && <span className={styles.projectCount}>{cardCount}</span>}
@@ -926,18 +1046,23 @@ function ProjectRow({
     </button>
   ) : null;
 
+  const togglePin =
+    !project.isOwner && project.pinnedToBoard !== undefined
+      ? () => {
+          startTransition(async () => {
+            await setPinnedToBoardAction({
+              projectId: project.id,
+              pinned: !project.pinnedToBoard,
+            });
+          });
+        }
+      : undefined;
+
   const pinBtnEl = !project.isOwner && project.pinnedToBoard !== undefined ? (
     <button
       type="button"
       className={`${styles.pinBtn} ${project.pinnedToBoard ? styles.pinBtnActive : ""}`}
-      onClick={() => {
-        startTransition(async () => {
-          await setPinnedToBoardAction({
-            projectId: project.id,
-            pinned: !project.pinnedToBoard,
-          });
-        });
-      }}
+      onClick={() => togglePin?.()}
       disabled={isPending}
       title={project.pinnedToBoard ? "Unpin from board" : "Pin to board"}
       aria-label={project.pinnedToBoard ? `Unpin ${project.name} from board` : `Pin ${project.name} to board`}
@@ -964,6 +1089,23 @@ function ProjectRow({
       <span className={styles.ownerBadge}>{project.ownerEmail}</span>
     ) : null;
 
+  // Rendered at every width but only displayed on coarse pointers (see the
+  // `@media (hover: hover) and (pointer: fine)` rule) — keeping it in the DOM
+  // means no layout-dependent JS and no hydration branch.
+  const rowMenuEl = (
+    <RowMenu
+      projectName={project.name}
+      canRename={project.isOwner}
+      onRename={project.isOwner ? () => setRenamingName(project.name) : undefined}
+      onShare={onShareClick}
+      onSchedule={() => setScheduleOpen(true)}
+      pinned={project.pinnedToBoard}
+      onTogglePin={togglePin}
+      onDelete={project.isOwner ? handleDeleteProject : undefined}
+      disabled={isPending}
+    />
+  );
+
   return (
     <>
       {isRowCollapsed ? (
@@ -978,6 +1120,7 @@ function ProjectRow({
           {shareBtnEl}
           {pinBtnEl}
           {deleteBtnEl}
+          {rowMenuEl}
         </div>
       ) : (
         <div
@@ -988,6 +1131,7 @@ function ProjectRow({
             {ownerBadgeEl}
             {shareBtnEl}
             {deleteBtnEl}
+            {rowMenuEl}
           </div>
           <div className={`${styles.projectLine2} ${!active ? styles.projectRowInactive : ""}`}>
             {scheduleEl}
@@ -1012,10 +1156,94 @@ function ProjectRow({
           dndDisabled={dndDisabled}
           now={now}
           inactive={!active}
-          heat={lane === "FAILED" ? project.failedHeat : lane === "DONE" ? project.doneHeat : undefined}
+          heat={laneHeat(project, lane)}
         />
       ))}
     </>
+  );
+}
+
+// Phones have no hover, so the row's icon buttons are either permanently
+// invisible there or permanently visible everywhere — and at 20x20 they were
+// well under the 44px minimum tap target anyway. On coarse pointers they
+// collapse into this one menu, which also exposes Rename: on desktop that is
+// a double-click on the project name, which touch has no equivalent for.
+function RowMenu({
+  projectName,
+  canRename,
+  onRename,
+  onShare,
+  onSchedule,
+  pinned,
+  onTogglePin,
+  onDelete,
+  disabled,
+}: {
+  projectName: string;
+  canRename: boolean;
+  onRename?: () => void;
+  onShare?: () => void;
+  onSchedule: () => void;
+  pinned?: boolean;
+  onTogglePin?: () => void;
+  onDelete?: () => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const run = (fn?: () => void) => () => {
+    setOpen(false);
+    fn?.();
+  };
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          className={styles.rowMenuBtn}
+          aria-label={`More actions for ${projectName}`}
+          title="More actions"
+          disabled={disabled}
+        >
+          <MoreHorizontal size={18} aria-hidden />
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content className={styles.rowMenu} align="end" sideOffset={4}>
+          {canRename && onRename ? (
+            <button type="button" className={styles.rowMenuItem} onClick={run(onRename)}>
+              <Pencil size={15} aria-hidden /> Rename
+            </button>
+          ) : null}
+          <button type="button" className={styles.rowMenuItem} onClick={run(onSchedule)}>
+            <Clock size={15} aria-hidden /> Schedule…
+          </button>
+          {onShare ? (
+            <button type="button" className={styles.rowMenuItem} onClick={run(onShare)}>
+              <Share2 size={15} aria-hidden /> Share
+            </button>
+          ) : null}
+          {onTogglePin ? (
+            <button type="button" className={styles.rowMenuItem} onClick={run(onTogglePin)}>
+              {pinned ? <PinOff size={15} aria-hidden /> : <Pin size={15} aria-hidden />}
+              {pinned ? "Unpin from board" : "Pin to board"}
+            </button>
+          ) : null}
+          {onDelete ? (
+            <>
+              <div className={styles.rowMenuDivider} />
+              <button
+                type="button"
+                className={`${styles.rowMenuItem} ${styles.rowMenuItemDanger}`}
+                onClick={run(onDelete)}
+              >
+                <X size={15} aria-hidden /> Delete project
+              </button>
+            </>
+          ) : null}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
@@ -1203,6 +1431,8 @@ function LaneCell({
 
   const cellClass = [
     styles.laneCell,
+    heat !== undefined && styles.laneCellHeated,
+    lane === "BACKLOG" && styles.laneCellBacklog,
     isDone && styles.laneCellDone,
     isFailed && styles.laneCellFailed,
     isMinimized && styles.laneCellMinimized,
@@ -1214,13 +1444,8 @@ function LaneCell({
     .filter(Boolean)
     .join(" ");
 
-  const heatStyle =
-    heat !== undefined
-      ? ({ "--heat": heat } as CSSProperties & Record<string, string | number>)
-      : undefined;
-
   return (
-    <div ref={droppable.setNodeRef} className={cellClass} style={heatStyle}>
+    <div ref={droppable.setNodeRef} className={cellClass} style={laneVars(lane, heat)}>
       {!isRowCollapsed && isLaneCollapsed && cards.length > 0 ? (
         <span
           className={`${styles.laneCellCollapsedCount} ${

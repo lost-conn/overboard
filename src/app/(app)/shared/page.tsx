@@ -1,38 +1,48 @@
-import Image from "next/image";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
-import { getBoardForUser, getProjectParticipants, type ProjectRow } from "@/lib/board";
+import { getSharedBoard, getProjectParticipants } from "@/lib/board";
+import type { ProjectRow } from "@/lib/board";
 import { listClasses } from "@/lib/board/classes";
 import { listTags } from "@/lib/tags";
 import { Lane } from "@/generated/prisma/enums";
 import { parseRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
-import { logoutAction } from "./(auth)/actions";
-import { BoardClient, type ClientProject, type ClientTag } from "./_components/BoardClient";
-import { NewProjectButton } from "./_components/NewProjectButton";
-import styles from "./page.module.css";
+import { PageHeader } from "../../_components/AppShell";
+import { BoardClient, type ClientProject, type ClientTag } from "../../_components/BoardClient";
+import styles from "./shared.module.css";
 
-export default async function Home() {
+export default async function SharedPage() {
   const user = await currentUser();
   if (!user) redirect("/login");
 
   const serverNow = new Date().toISOString();
-  const [projects, allTags, classes] = await Promise.all([
-    getBoardForUser(user.id),
-    listTags(user.id),
+  const [projects, classes] = await Promise.all([
+    getSharedBoard(user.id),
     listClasses(user.id),
   ]);
   const clientProjects = projects.map((p) => toClientProject(p, user.id));
 
-  const ownerIds = [...new Set(
-    projects.filter((p) => !p.isOwner).map((p) => p.userId),
-  )];
+  const ownerIds = [...new Set(projects.map((p) => p.userId))];
   const tagsByOwner: Record<string, ClientTag[]> = {};
+  const allOwnerTags: ClientTag[] = [];
   if (ownerIds.length > 0) {
     const results = await Promise.all(ownerIds.map((oid) => listTags(oid)));
-    ownerIds.forEach((oid, i) => { tagsByOwner[oid] = results[i]; });
+    ownerIds.forEach((oid, i) => {
+      tagsByOwner[oid] = results[i];
+      allOwnerTags.push(...results[i]);
+    });
   }
-  tagsByOwner[user.id] = allTags;
+  const userTags = await listTags(user.id);
+  tagsByOwner[user.id] = userTags;
+
+  const allTags = deduplicateTags([...userTags, ...allOwnerTags]);
+
+  const usedNames = new Set<string>();
+  for (const p of clientProjects) {
+    for (const lane of ["BACKLOG", "TODO", "DOING", "DONE", "FAILED"] as const) {
+      for (const c of p.lanes[lane]) for (const t of c.tags) usedNames.add(t.name);
+    }
+  }
+  const filterTags = allTags.filter((t) => usedNames.has(t.name));
 
   const sharedProjectIds = projects.filter((p) => p.isShared).map((p) => p.id);
   const participantsByProject: Record<string, { id: string; email: string }[]> = {};
@@ -53,53 +63,19 @@ export default async function Home() {
     }
   }
 
-  // Filter bar only shows tags actually in use on this view (the board).
-  // Tags that exist on ideas but not cards are hidden here — they still appear
-  // on /ideas. allTags is still passed in full so the per-card picker can pull
-  // from any of the user's tags.
-  const usedNames = new Set<string>();
-  for (const p of clientProjects) {
-    for (const lane of ["BACKLOG", "TODO", "DOING", "DONE", "FAILED"] as const) {
-      for (const c of p.lanes[lane]) for (const t of c.tags) usedNames.add(t.name);
-    }
-  }
-  const filterTags = allTags.filter((t) => usedNames.has(t.name));
-
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.headerLeft}>
-          <Image src="/logo.png" alt="" width={24} height={24} className={styles.logo} priority unoptimized />
-          <h1 className={styles.title}>The Overboard</h1>
-          <span className={styles.email}>{user.email}</span>
-        </div>
-        <div className={styles.headerActions}>
-          <NewProjectButton />
-          <Link className={styles.navLink} href="/ideas">
-            Idea pool
-          </Link>
-          <Link className={styles.navLink} href="/shared">
-            Shared
-          </Link>
-          <Link className={styles.navLink} href="/settings/tokens">
-            Tokens
-          </Link>
-          <Link className={styles.navLink} href="/settings/board">
-            Settings
-          </Link>
-          <Link className={styles.navLink} href="/settings/classes">
-            Classes
-          </Link>
-          <form action={logoutAction}>
-            <button className={styles.iconBtn} type="submit">
-              Sign out
-            </button>
-          </form>
-        </div>
-      </header>
+      <div className={styles.head}>
+        <PageHeader title="Shared with me" subtitle="Projects other people have shared with you." />
+      </div>
 
       {clientProjects.length === 0 ? (
-        <EmptyState />
+        <section className={styles.empty}>
+          <h2 className={styles.emptyTitle}>No shared projects.</h2>
+          <p className={styles.emptyBody}>
+            When someone shares a project with you, it will appear here.
+          </p>
+        </section>
       ) : (
         <BoardClient
           projects={clientProjects}
@@ -146,14 +122,17 @@ function toClientProject(p: ProjectRow, currentUserId: string): ClientProject {
     priority: p.priority,
     lanes,
     isShared: p.isShared,
-    isOwner: p.isOwner,
-    ownerId: p.isOwner ? currentUserId : p.userId,
+    isOwner: false,
+    ownerId: p.userId,
     ownerEmail: p.ownerEmail,
+    pinnedToBoard: p.pinnedToBoard,
     omnipresent: p.omnipresent,
     classIds: p.classIds,
     schedules: p.schedules,
     failedHeat: p.failedHeat,
     doneHeat: p.doneHeat,
+    doingHeat: p.doingHeat,
+    todoHeat: p.todoHeat,
   };
 }
 
@@ -175,19 +154,10 @@ function parseRecurrenceSafe(raw: string | null): RecurrenceRule | null {
   }
 }
 
-function EmptyState() {
-  return (
-    <section className={styles.empty}>
-      <h2 className={styles.emptyTitle}>No projects yet.</h2>
-      <p className={styles.emptyBody}>
-        Each project becomes a row across the board. Lanes (Backlog → To do → Doing → Done) run
-        left to right.
-      </p>
-      <p className={styles.emptyHint}>
-        Click <strong>+ New project</strong> in the header to start one, capture rough ideas in
-        the <Link href="/ideas">Idea pool</Link>, or seed sample data with{" "}
-        <code>npm run seed -- {`<your email>`}</code>.
-      </p>
-    </section>
-  );
+function deduplicateTags(tags: ClientTag[]): ClientTag[] {
+  const seen = new Map<string, ClientTag>();
+  for (const t of tags) {
+    if (!seen.has(t.name)) seen.set(t.name, t);
+  }
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
