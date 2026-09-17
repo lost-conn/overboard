@@ -402,12 +402,22 @@
 }
 
 /* Heat (a 0..1 custom property set inline per project row in LaneCell) is
-   mixed by the shared .laneCell rule above. These two only slow the tint
-   down: activity changes should ease rather than snap, where a drag-over
-   highlight should be immediate. */
-.laneCellFailed,
-.laneCellDone {
+   mixed by the shared .laneCell rule above. This only slows the tint down:
+   a change in activity should ease rather than snap, where a drag-over
+   highlight needs to be immediate. Applied to whichever lanes carry heat
+   rather than naming them, so Backlog — which deliberately has none — keeps
+   the snappy base timing. */
+.laneCellHeated {
   transition: background 0.3s, border-color 0.3s;
+}
+
+/* Backlog never tints. LaneCell already declines to pass it a heat value, but
+   stating it here too means the exemption survives anyone later deciding to
+   set --heat on every lane: a big backlog is this app's normal state, and a
+   row that is permanently hot says nothing at all. */
+.laneCellBacklog {
+  background: var(--lane-wash);
+  border-color: var(--border);
 }
 
 /* Declared after the heat-tint rules (same specificity as each) so an

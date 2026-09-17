@@ -154,6 +154,8 @@ function toClientProject(p: ProjectRow, currentUserId: string): ClientProject {
     schedules: p.schedules,
     failedHeat: p.failedHeat,
     doneHeat: p.doneHeat,
+    doingHeat: p.doingHeat,
+    todoHeat: p.todoHeat,
   };
 }
 

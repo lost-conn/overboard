@@ -8,7 +8,13 @@ import { compareProjects, scoreProject } from "./sorting";
 import { sweepDueCards } from "./mutations";
 import { emitBoardForProject } from "./access";
 import { isProjectActive, parseWindows, type ClassSchedule } from "./schedule";
-import { heatFor, FAILED_HEAT_MAX, DONE_HEAT_MAX } from "./heat";
+import {
+  heatFor,
+  FAILED_HEAT_MAX,
+  DONE_HEAT_MAX,
+  DOING_HEAT_MAX,
+  TODO_HEAT_MAX,
+} from "./heat";
 
 export const LANES = [Lane.BACKLOG, Lane.TODO, Lane.DOING, Lane.DONE, Lane.FAILED] as const;
 
@@ -48,6 +54,10 @@ export type ProjectRow = Omit<Project, "omnipresent"> & {
   activeNow: boolean; // isProjectActive({ omnipresent, schedules }, <read time>)
   failedHeat: number; // 0..1, min(visible FAILED count / FAILED_HEAT_MAX, 1)
   doneHeat: number; // 0..1, min(recent DONE count / DONE_HEAT_MAX, 1)
+  // WIP pressure rather than activity: warmer means too much, not more done.
+  doingHeat: number; // 0..1, min(visible DOING count / DOING_HEAT_MAX, 1)
+  todoHeat: number; // 0..1, min(visible TODO count / TODO_HEAT_MAX, 1)
+  // No backlogHeat, on purpose — see heat.ts.
 };
 
 function toClassSchedules(
@@ -178,6 +188,8 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
       ...(opts.pinnedToBoard !== undefined ? { pinnedToBoard: opts.pinnedToBoard } : {}),
       failedHeat: round2(heatFor(lanes[Lane.FAILED].length, FAILED_HEAT_MAX)),
       doneHeat: round2(heatFor(recentDoneCount, DONE_HEAT_MAX)),
+      doingHeat: round2(heatFor(lanes[Lane.DOING].length, DOING_HEAT_MAX)),
+      todoHeat: round2(heatFor(lanes[Lane.TODO].length, TODO_HEAT_MAX)),
     };
     return { row, score };
   }
@@ -282,6 +294,8 @@ export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
         pinnedToBoard: s.pinnedToBoard,
         failedHeat: round2(heatFor(lanes[Lane.FAILED].length, FAILED_HEAT_MAX)),
         doneHeat: round2(heatFor(recentDoneCount, DONE_HEAT_MAX)),
+        doingHeat: round2(heatFor(lanes[Lane.DOING].length, DOING_HEAT_MAX)),
+        todoHeat: round2(heatFor(lanes[Lane.TODO].length, TODO_HEAT_MAX)),
       };
       return { row, score };
     });

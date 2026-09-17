@@ -71,6 +71,23 @@ function laneVars(lane: LaneKey, heat?: number): LaneVars {
   if (heat !== undefined) vars["--heat"] = heat;
   return vars;
 }
+
+// Backlog is the one lane with no heat. It is deliberately absent rather than
+// zero: a big backlog is this app's normal state, not a problem to flag.
+function laneHeat(project: ClientProject, lane: LaneKey): number | undefined {
+  switch (lane) {
+    case "FAILED":
+      return project.failedHeat;
+    case "DONE":
+      return project.doneHeat;
+    case "DOING":
+      return project.doingHeat;
+    case "TODO":
+      return project.todoHeat;
+    default:
+      return undefined;
+  }
+}
 import { describeDue, type DueTier } from "@/lib/board/due";
 import { describeRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
 import {
@@ -116,6 +133,8 @@ export type ClientProject = {
   schedules: ClassSchedule[];
   failedHeat: number;
   doneHeat: number;
+  doingHeat: number;
+  todoHeat: number;
 };
 
 export type ClientClass = { id: string; name: string };
@@ -1036,7 +1055,7 @@ function ProjectRow({
           dndDisabled={dndDisabled}
           now={now}
           inactive={!active}
-          heat={lane === "FAILED" ? project.failedHeat : lane === "DONE" ? project.doneHeat : undefined}
+          heat={laneHeat(project, lane)}
         />
       ))}
     </>
@@ -1227,6 +1246,8 @@ function LaneCell({
 
   const cellClass = [
     styles.laneCell,
+    heat !== undefined && styles.laneCellHeated,
+    lane === "BACKLOG" && styles.laneCellBacklog,
     isDone && styles.laneCellDone,
     isFailed && styles.laneCellFailed,
     isMinimized && styles.laneCellMinimized,
