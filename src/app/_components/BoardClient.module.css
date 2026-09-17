@@ -113,6 +113,35 @@
   padding: 4px 8px 4px 4px;
 }
 
+/* Minimized/expanded rows: three stacked lines instead of one horizontal
+   row, so the project name gets room to breathe. Content is top-aligned;
+   any extra row height (driven by the lane cells) is left empty below. */
+.projectCellStacked {
+  align-items: stretch;
+  justify-content: flex-start;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.projectLine1,
+.projectLine2,
+.projectLine3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.projectLine1 .projectName,
+.projectLine1 .projectNameInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.projectLine3 {
+  gap: 4px;
+}
+
 .priorityInput {
   flex-shrink: 0;
   width: 36px;

@@ -870,127 +870,163 @@ function ProjectRow({
 
   const isRowCollapsed = viewState === "collapsed";
 
+  const nameEl = project.isOwner && renamingName !== null ? (
+    <input
+      type="text"
+      className={styles.projectNameInput}
+      autoFocus
+      value={renamingName}
+      maxLength={120}
+      aria-label={`Rename project ${project.name}`}
+      onChange={(e) => setRenamingName(e.target.value)}
+      onBlur={commitRename}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setRenamingName(null);
+        }
+      }}
+    />
+  ) : (
+    <span
+      className={styles.projectName}
+      onDoubleClick={project.isOwner ? () => setRenamingName(project.name) : undefined}
+      title={project.isOwner ? "Double-click to rename" : undefined}
+    >
+      {project.name}
+    </span>
+  );
+
+  const priorityEl = (
+    <input
+      key={project.priority}
+      type="number"
+      className={styles.priorityInput}
+      defaultValue={project.priority}
+      min={-99}
+      max={99}
+      onBlur={(e) => commitPriority(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+      aria-label={`Priority for ${project.name}`}
+      title="Lower = higher in list. Algorithm sorts within the same priority."
+    />
+  );
+
+  const scheduleEl = (
+    <div className={styles.scheduleRow}>
+      <select
+        className={styles.scheduleSelect}
+        value={scheduleSelectValue(project)}
+        onChange={(e) => handleScheduleSelect(e.target.value)}
+        title="Schedule"
+        aria-label={`Schedule for ${project.name}`}
+      >
+        <option value="ALWAYS">{SCHEDULE_MODE_LABELS.ALWAYS}</option>
+        <option value="NEVER">{SCHEDULE_MODE_LABELS.NEVER}</option>
+        {classes.length > 0 ? (
+          <optgroup label="Classes">
+            {classes.map((c) => (
+              <option key={c.id} value={`class:${c.id}`}>
+                {c.name}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        <option value="manage">Manage classes…</option>
+      </select>
+      {!active ? <span className={styles.projectInactiveBadge}>inactive</span> : null}
+      {!isRowCollapsed && <span className={styles.projectCount}>{cardCount}</span>}
+    </div>
+  );
+
+  const shareBtnEl = onShareClick ? (
+    <button
+      type="button"
+      className={styles.shareBtn}
+      onClick={onShareClick}
+      title="Share project"
+      aria-label={`Share project ${project.name}`}
+    >
+      <Share2 size={14} aria-hidden />
+    </button>
+  ) : null;
+
+  const pinBtnEl = !project.isOwner && project.pinnedToBoard !== undefined ? (
+    <button
+      type="button"
+      className={`${styles.pinBtn} ${project.pinnedToBoard ? styles.pinBtnActive : ""}`}
+      onClick={() => {
+        startTransition(async () => {
+          await setPinnedToBoardAction({
+            projectId: project.id,
+            pinned: !project.pinnedToBoard,
+          });
+        });
+      }}
+      disabled={isPending}
+      title={project.pinnedToBoard ? "Unpin from board" : "Pin to board"}
+      aria-label={project.pinnedToBoard ? `Unpin ${project.name} from board` : `Pin ${project.name} to board`}
+    >
+      {project.pinnedToBoard ? <PinOff size={14} aria-hidden /> : <Pin size={14} aria-hidden />}
+    </button>
+  ) : null;
+
+  const deleteBtnEl = project.isOwner ? (
+    <button
+      type="button"
+      className={styles.projectDelete}
+      onClick={handleDeleteProject}
+      disabled={isPending}
+      aria-label={`Delete project ${project.name}`}
+      title="Delete project"
+    >
+      <X size={14} aria-hidden />
+    </button>
+  ) : null;
+
+  const ownerBadgeEl =
+    !project.isOwner && project.ownerEmail ? (
+      <span className={styles.ownerBadge}>{project.ownerEmail}</span>
+    ) : null;
+
   return (
     <>
-      <div
-        className={`${styles.projectCell} ${isRowCollapsed ? styles.projectCellCollapsed : ""}`}
-      >
-        <input
-          key={project.priority}
-          type="number"
-          className={styles.priorityInput}
-          defaultValue={project.priority}
-          min={-99}
-          max={99}
-          onBlur={(e) => commitPriority(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.currentTarget.blur();
-          }}
-          aria-label={`Priority for ${project.name}`}
-          title="Lower = higher in list. Algorithm sorts within the same priority."
-        />
-        <div className={`${styles.projectInfo} ${!active ? styles.projectRowInactive : ""}`}>
-          {project.isOwner && renamingName !== null ? (
-            <input
-              type="text"
-              className={styles.projectNameInput}
-              autoFocus
-              value={renamingName}
-              maxLength={120}
-              aria-label={`Rename project ${project.name}`}
-              onChange={(e) => setRenamingName(e.target.value)}
-              onBlur={commitRename}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  e.currentTarget.blur();
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  setRenamingName(null);
-                }
-              }}
-            />
-          ) : (
-            <span
-              className={styles.projectName}
-              onDoubleClick={project.isOwner ? () => setRenamingName(project.name) : undefined}
-              title={project.isOwner ? "Double-click to rename" : undefined}
-            >
-              {project.name}
-            </span>
-          )}
-          <div className={styles.scheduleRow}>
-            <select
-              className={styles.scheduleSelect}
-              value={scheduleSelectValue(project)}
-              onChange={(e) => handleScheduleSelect(e.target.value)}
-              title="Schedule"
-              aria-label={`Schedule for ${project.name}`}
-            >
-              <option value="ALWAYS">{SCHEDULE_MODE_LABELS.ALWAYS}</option>
-              <option value="NEVER">{SCHEDULE_MODE_LABELS.NEVER}</option>
-              {classes.length > 0 ? (
-                <optgroup label="Classes">
-                  {classes.map((c) => (
-                    <option key={c.id} value={`class:${c.id}`}>
-                      {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-              <option value="manage">Manage classes…</option>
-            </select>
-            {!active ? <span className={styles.projectInactiveBadge}>inactive</span> : null}
+      {isRowCollapsed ? (
+        <div className={`${styles.projectCell} ${styles.projectCellCollapsed}`}>
+          {priorityEl}
+          <div className={`${styles.projectInfo} ${!active ? styles.projectRowInactive : ""}`}>
+            {nameEl}
+            {scheduleEl}
+            {ownerBadgeEl}
           </div>
-          {!project.isOwner && project.ownerEmail ? (
-            <span className={styles.ownerBadge}>{project.ownerEmail}</span>
-          ) : null}
-          {!isRowCollapsed && <span className={styles.projectCount}>{cardCount}</span>}
+          <ViewStateToggle value={viewState} onChange={onViewStateChange} />
+          {shareBtnEl}
+          {pinBtnEl}
+          {deleteBtnEl}
         </div>
-        <ViewStateToggle value={viewState} onChange={onViewStateChange} />
-        {onShareClick ? (
-          <button
-            type="button"
-            className={styles.shareBtn}
-            onClick={onShareClick}
-            title="Share project"
-            aria-label={`Share project ${project.name}`}
-          >
-            <Share2 size={14} aria-hidden />
-          </button>
-        ) : null}
-        {!project.isOwner && project.pinnedToBoard !== undefined ? (
-          <button
-            type="button"
-            className={`${styles.pinBtn} ${project.pinnedToBoard ? styles.pinBtnActive : ""}`}
-            onClick={() => {
-              startTransition(async () => {
-                await setPinnedToBoardAction({
-                  projectId: project.id,
-                  pinned: !project.pinnedToBoard,
-                });
-              });
-            }}
-            disabled={isPending}
-            title={project.pinnedToBoard ? "Unpin from board" : "Pin to board"}
-            aria-label={project.pinnedToBoard ? `Unpin ${project.name} from board` : `Pin ${project.name} to board`}
-          >
-            {project.pinnedToBoard ? <PinOff size={14} aria-hidden /> : <Pin size={14} aria-hidden />}
-          </button>
-        ) : null}
-        {project.isOwner ? (
-          <button
-            type="button"
-            className={styles.projectDelete}
-            onClick={handleDeleteProject}
-            disabled={isPending}
-            aria-label={`Delete project ${project.name}`}
-            title="Delete project"
-          >
-            <X size={14} aria-hidden />
-          </button>
-        ) : null}
-      </div>
+      ) : (
+        <div className={`${styles.projectCell} ${styles.projectCellStacked}`}>
+          <div className={`${styles.projectLine1} ${!active ? styles.projectRowInactive : ""}`}>
+            {nameEl}
+            {ownerBadgeEl}
+            {shareBtnEl}
+            {deleteBtnEl}
+          </div>
+          <div className={`${styles.projectLine2} ${!active ? styles.projectRowInactive : ""}`}>
+            {scheduleEl}
+          </div>
+          <div className={styles.projectLine3}>
+            {priorityEl}
+            <ViewStateToggle value={viewState} onChange={onViewStateChange} />
+            {pinBtnEl}
+          </div>
+        </div>
+      )}
       {LANES.map((lane) => (
         <LaneCell
           key={lane}
