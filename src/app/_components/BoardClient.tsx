@@ -1014,7 +1014,9 @@ function ProjectRow({
           {deleteBtnEl}
         </div>
       ) : (
-        <div className={`${styles.projectCell} ${styles.projectCellStacked}`}>
+        <div
+          className={`${styles.projectCell} ${styles.projectCellStacked} ${viewState === "expanded" ? styles.projectCellExpanded : ""}`}
+        >
           <div className={`${styles.projectLine1} ${!active ? styles.projectRowInactive : ""}`}>
             {nameEl}
             {ownerBadgeEl}
