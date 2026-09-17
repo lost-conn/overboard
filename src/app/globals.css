@@ -10,6 +10,20 @@
   --warning: #b45309;
   --success: #15803d;
   --radius: 6px;
+
+  /* Surface elevation ladder: page ground -> lane -> card -> card hover.
+     Anything that sits *inside* a surface must use the next step up, so a
+     card never reads as a cut-out in the lane that contains it. In light
+     mode the steps climb toward white; in dark mode away from black. */
+  --elev-0: #fafaf9;
+  --elev-1: #fcfcfb;
+  --elev-2: #ffffff;
+  --elev-3: #ffffff;
+
+  /* Two-layer, scheme-aware card shadow. A single 3% black shadow is
+     invisible on a near-black ground, so the dark values are much stronger. */
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.06), 0 3px 8px rgb(0 0 0 / 0.04);
+  --shadow-card-hover: 0 1px 2px rgb(0 0 0 / 0.08), 0 6px 14px rgb(0 0 0 / 0.08);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -24,6 +38,15 @@
     --danger: #f87171;
     --warning: #fbbf24;
     --success: #4ade80;
+
+    --elev-0: #0c0a09;
+    --elev-1: #141110;
+    --elev-2: #1f1b19;
+    --elev-3: #2a2523;
+
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 3px 8px rgb(0 0 0 / 0.22);
+    --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.5), 0 8px 18px rgb(0 0 0 / 0.3);
+
     color-scheme: dark;
   }
 }

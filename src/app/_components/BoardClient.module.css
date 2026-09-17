@@ -96,15 +96,20 @@
   margin-top: 6px;
 }
 
+/* A quiet rail, not a card. The project name is a static label nobody
+   clicks — it has no business being the most elevated surface on the board.
+   Transparent over the page ground, with a single divider separating it
+   from the lanes. */
 .projectCell {
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 10px 8px 10px 4px;
   transition: padding 0.15s;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
   min-height: 80px;
 }
 
@@ -182,7 +187,7 @@
 .priorityInput:focus {
   border-color: var(--accent);
   color: var(--text);
-  background: var(--bg);
+  background: var(--elev-2);
 }
 
 .projectInfo {
@@ -214,7 +219,7 @@
   font-weight: 600;
   letter-spacing: -0.005em;
   color: var(--text);
-  background: var(--bg);
+  background: var(--elev-2);
   border: 1px solid var(--accent);
   border-radius: 4px;
   padding: 1px 4px;
@@ -252,7 +257,7 @@
   font-size: 9px;
   line-height: 1;
   color: var(--text-dim);
-  background: var(--surface);
+  background: var(--elev-2);
   border: 0;
   border-radius: 3px;
   cursor: pointer;
@@ -261,12 +266,12 @@
 
 .toggleBtn:hover:not(.toggleBtnActive) {
   color: var(--text);
-  background: var(--bg);
+  background: var(--elev-3);
 }
 
 .toggleBtnActive {
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 14%, var(--elev-2));
 }
 
 .projectDelete {
@@ -295,7 +300,7 @@
 
 .laneCell {
   position: relative;
-  background: color-mix(in srgb, var(--surface) 50%, transparent);
+  background: var(--elev-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   min-height: 80px;
@@ -338,21 +343,13 @@
    percentage collapses to 0%, so the cell is pixel-identical to a neutral
    .laneCell — no separate "no heat" rule needed. */
 .laneCellFailed {
-  background: color-mix(
-    in srgb,
-    var(--danger) calc(var(--heat, 0) * 10%),
-    color-mix(in srgb, var(--surface) 50%, transparent)
-  );
+  background: color-mix(in srgb, var(--danger) calc(var(--heat, 0) * 10%), var(--elev-1));
   border-color: color-mix(in srgb, var(--danger) calc(var(--heat, 0) * 40%), var(--border));
   transition: background 0.3s, border-color 0.3s;
 }
 
 .laneCellDone {
-  background: color-mix(
-    in srgb,
-    var(--success) calc(var(--heat, 0) * 10%),
-    color-mix(in srgb, var(--surface) 50%, transparent)
-  );
+  background: color-mix(in srgb, var(--success) calc(var(--heat, 0) * 10%), var(--elev-1));
   border-color: color-mix(in srgb, var(--success) calc(var(--heat, 0) * 40%), var(--border));
   transition: background 0.3s, border-color 0.3s;
 }
@@ -361,7 +358,7 @@
    active drag-over always wins the background/border, regardless of a
    Done/Failed lane's current tint. */
 .laneCellOver {
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 8%, var(--elev-2));
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
 }
 
@@ -376,7 +373,7 @@
 /* Lane column collapsed via header click: hide cards across all rows, keep a
    thin strip so the column is still visually present. */
 .laneCellColCollapsed {
-  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  background: color-mix(in srgb, var(--elev-2) 40%, var(--elev-1));
 }
 
 .laneCellCollapsedCount {
@@ -418,15 +415,19 @@
   line-height: 1.35;
   color: var(--text);
   text-align: left;
-  background: var(--bg);
+  /* One elevation step above the lane that contains it. Using --bg here made
+     the card identical to the page ground, so it read as a hole in the lane
+     rather than an object on it. */
+  background: var(--elev-2);
   border: 1px solid var(--border);
   border-radius: 5px;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--shadow-card);
   cursor: pointer;
   /* Allow native vertical scroll to pass through; the TouchSensor long-press
      (220ms) still initiates a drag without fighting the scroll gesture. */
   touch-action: pan-y;
   transition:
+    background 0.15s,
     border-color 0.15s,
     box-shadow 0.15s,
     transform 0.05s;
@@ -614,8 +615,9 @@
 }
 
 .card:hover {
+  background: var(--elev-3);
   border-color: var(--text-dim);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-card-hover);
 }
 
 .card:active {
@@ -658,7 +660,7 @@
 .addBtn:hover {
   color: var(--text);
   border-color: var(--border);
-  background: var(--bg);
+  background: var(--elev-2);
 }
 
 /* Slim hover strip above a lane's card list — reserves its height at all
@@ -691,7 +693,7 @@
 .addTopStrip:hover {
   color: var(--text);
   border-color: var(--border);
-  background: var(--bg);
+  background: var(--elev-2);
 }
 
 .addForm {
@@ -704,7 +706,7 @@
   font: inherit;
   font-size: 13px;
   color: var(--text);
-  background: var(--bg);
+  background: var(--elev-2);
   border: 1px solid var(--accent);
   border-radius: 4px;
   outline: none;
@@ -715,10 +717,10 @@
   font-size: 13px;
   line-height: 1.35;
   color: var(--text);
-  background: var(--bg);
+  background: var(--elev-3);
   border: 1px solid var(--accent);
   border-radius: 5px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-card-hover);
   cursor: grabbing;
   max-width: 280px;
 }
@@ -728,10 +730,10 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
-  background: var(--surface);
+  background: var(--elev-3);
   border: 1px solid var(--accent);
   border-radius: var(--radius);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-card-hover);
   cursor: grabbing;
 }
 
@@ -833,9 +835,12 @@
     display: none;
   }
 
+  /* Single column: the rail divider belongs under the project, not beside it. */
   .projectCell {
     padding: 8px 10px;
     min-height: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
   }
 
   .laneMobileLabel {
