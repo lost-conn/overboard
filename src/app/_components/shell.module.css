@@ -1,0 +1,190 @@
+/* The one app header. Six pages used to hand-roll this; the duplicated
+   .header / .title / .email / .iconBtn rules all collapse into here. */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+  color: var(--text);
+}
+
+.brand:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.logo {
+  flex-shrink: 0;
+  border-radius: var(--s-1);
+}
+
+.title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.navLink,
+.navBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  white-space: nowrap;
+  transition:
+    color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease);
+}
+
+.navLink:hover,
+.navBtn:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text-dim) 10%, transparent);
+  text-decoration: none;
+}
+
+/* Where you are. The only page-location signal the app has ever had. */
+.navLink[data-current],
+.navBtn[data-current] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.navLink:focus-visible,
+.navBtn:focus-visible,
+.menuItem:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- settings group ------------------------------------------------- */
+
+.menu {
+  min-width: 200px;
+  padding: var(--s-1);
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 1.5);
+  box-shadow: var(--shadow-card-hover);
+  z-index: 60;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  /* 44px even inside the menu: this is the touch surface. */
+  min-height: 44px;
+  padding: 0 var(--s-2);
+  font: inherit;
+  font-size: var(--fs-body);
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: var(--s-1);
+  transition: background var(--t-fast) var(--ease);
+}
+
+.menuItem:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  text-decoration: none;
+}
+
+.menuItem[data-current] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.menuDivider {
+  height: 1px;
+  margin: var(--s-1) 0;
+  background: var(--border);
+}
+
+.menuEmail {
+  padding: var(--s-1) var(--s-2) var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+/* --- page heading ---------------------------------------------------- */
+
+.pageHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.pageTitle {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.pageSubtitle {
+  max-width: 60ch;
+  font-size: var(--fs-body);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* --- narrow ---------------------------------------------------------- */
+
+@media (max-width: 700px) {
+  .header {
+    gap: var(--s-2);
+    padding: var(--s-2) var(--s-3);
+  }
+
+  /* The logo carries the brand; the wordmark is what gives way first so the
+     nav never wraps onto a second row. */
+  .title {
+    display: none;
+  }
+
+  .navLink,
+  .navBtn {
+    padding: var(--s-2);
+  }
+
+  .navBtnLabel {
+    display: none;
+  }
+}
+
+/* Coarse pointers: the labels keep their size, the hit areas grow. */
+@media (hover: none), (pointer: coarse) {
+  .navLink,
+  .navBtn {
+    min-height: 44px;
+    min-width: 44px;
+    justify-content: center;
+  }
+}

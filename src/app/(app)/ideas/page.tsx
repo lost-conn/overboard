@@ -1,11 +1,9 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { getIdeasForUser } from "@/lib/ideas";
 import { listTags } from "@/lib/tags";
-import { logoutAction } from "../(auth)/actions";
-import { IdeasClient, type ClientIdea } from "../_components/IdeasClient";
+import { PageHeader } from "../../_components/AppShell";
+import { IdeasClient, type ClientIdea } from "../../_components/IdeasClient";
 import styles from "./ideas.module.css";
 
 export default async function IdeasPage() {
@@ -31,22 +29,9 @@ export default async function IdeasPage() {
 
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.headerLeft}>
-          <Link href="/" className={styles.backLink}>
-            <ArrowLeft size={14} aria-hidden /> Board
-          </Link>
-          <h1 className={styles.title}>Idea pool</h1>
-          <span className={styles.email}>{user.email}</span>
-        </div>
-        <div className={styles.headerActions}>
-          <form action={logoutAction}>
-            <button className={styles.iconBtn} type="submit">
-              Sign out
-            </button>
-          </form>
-        </div>
-      </header>
+      <div className={styles.head}>
+        <PageHeader title="Idea pool" subtitle="Rough notes that aren't projects yet." />
+      </div>
 
       <IdeasClient ideas={clientIdeas} allTags={allTags} filterTags={filterTags} />
     </main>

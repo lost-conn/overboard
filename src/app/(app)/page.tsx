@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
@@ -7,9 +6,8 @@ import { listClasses } from "@/lib/board/classes";
 import { listTags } from "@/lib/tags";
 import { Lane } from "@/generated/prisma/enums";
 import { parseRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
-import { logoutAction } from "./(auth)/actions";
-import { BoardClient, type ClientProject, type ClientTag } from "./_components/BoardClient";
-import { NewProjectButton } from "./_components/NewProjectButton";
+import { BoardClient, type ClientProject, type ClientTag } from "../_components/BoardClient";
+import { NewProjectButton } from "../_components/NewProjectButton";
 import styles from "./page.module.css";
 
 export default async function Home() {
@@ -67,36 +65,13 @@ export default async function Home() {
 
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.headerLeft}>
-          <Image src="/logo.png" alt="" width={24} height={24} className={styles.logo} priority unoptimized />
-          <h1 className={styles.title}>The Overboard</h1>
-          <span className={styles.email}>{user.email}</span>
-        </div>
-        <div className={styles.headerActions}>
-          <NewProjectButton />
-          <Link className={styles.navLink} href="/ideas">
-            Idea pool
-          </Link>
-          <Link className={styles.navLink} href="/shared">
-            Shared
-          </Link>
-          <Link className={styles.navLink} href="/settings/tokens">
-            Tokens
-          </Link>
-          <Link className={styles.navLink} href="/settings/board">
-            Settings
-          </Link>
-          <Link className={styles.navLink} href="/settings/classes">
-            Classes
-          </Link>
-          <form action={logoutAction}>
-            <button className={styles.iconBtn} type="submit">
-              Sign out
-            </button>
-          </form>
-        </div>
-      </header>
+      <h1 className={styles.srOnly}>Board</h1>
+
+      {/* Board-local action, deliberately not in the shell: it acts on this
+          page's contents rather than navigating anywhere. */}
+      <div className={styles.actions}>
+        <NewProjectButton />
+      </div>
 
       {clientProjects.length === 0 ? (
         <EmptyState />
@@ -186,7 +161,7 @@ function EmptyState() {
         left to right.
       </p>
       <p className={styles.emptyHint}>
-        Click <strong>+ New project</strong> in the header to start one, capture rough ideas in
+        Click <strong>+ New project</strong> above to start one, capture rough ideas in
         the <Link href="/ideas">Idea pool</Link>, or seed sample data with{" "}
         <code>npm run seed -- {`<your email>`}</code>.
       </p>

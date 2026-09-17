@@ -1,5 +1,3 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { getSharedBoard, getProjectParticipants } from "@/lib/board";
@@ -8,8 +6,8 @@ import { listClasses } from "@/lib/board/classes";
 import { listTags } from "@/lib/tags";
 import { Lane } from "@/generated/prisma/enums";
 import { parseRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
-import { logoutAction } from "../(auth)/actions";
-import { BoardClient, type ClientProject, type ClientTag } from "../_components/BoardClient";
+import { PageHeader } from "../../_components/AppShell";
+import { BoardClient, type ClientProject, type ClientTag } from "../../_components/BoardClient";
 import styles from "./shared.module.css";
 
 export default async function SharedPage() {
@@ -67,19 +65,9 @@ export default async function SharedPage() {
 
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.headerLeft}>
-          <Link href="/" className={styles.backLink}>
-            <ArrowLeft size={14} aria-hidden /> Board
-          </Link>
-          <h1 className={styles.title}>Shared with me</h1>
-        </div>
-        <div className={styles.headerActions}>
-          <form action={logoutAction}>
-            <button className={styles.iconBtn} type="submit">Sign out</button>
-          </form>
-        </div>
-      </header>
+      <div className={styles.head}>
+        <PageHeader title="Shared with me" subtitle="Projects other people have shared with you." />
+      </div>
 
       {clientProjects.length === 0 ? (
         <section className={styles.empty}>
