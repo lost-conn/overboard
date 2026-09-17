@@ -8,6 +8,7 @@ import { compareProjects, scoreProject } from "./sorting";
 import { sweepDueCards } from "./mutations";
 import { emitBoardForProject } from "./access";
 import { isProjectActive, parseWindows, type ClassSchedule, type ScheduleMode } from "./schedule";
+import { heatFor, FAILED_HEAT_MAX, DONE_HEAT_MAX } from "./heat";
 
 export const LANES = [Lane.BACKLOG, Lane.TODO, Lane.DOING, Lane.DONE, Lane.FAILED] as const;
 
@@ -21,6 +22,10 @@ export const LANE_LABELS: Record<Lane, string> = {
 
 const DEFAULT_FAILED_WINDOW_DAYS = 7;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
 
 export type CardWithTags = Card & {
   tags: TagChip[];
@@ -38,6 +43,8 @@ export type ProjectRow = Project & {
   // or the viewer's ProjectShare row for a shared one (mirrors `priority`).
   schedule: ClassSchedule | null; // the resolved class's tz+parsed windows, or null under ALWAYS/NEVER/dangling classId
   activeNow: boolean; // isProjectActive(scheduleMode, schedule, <read time>)
+  failedHeat: number; // 0..1, min(visible FAILED count / FAILED_HEAT_MAX, 1)
+  doneHeat: number; // 0..1, min(recent DONE count / DONE_HEAT_MAX, 1)
 };
 
 function toClassSchedule(cls: { tz: string; windows: string } | null | undefined): ClassSchedule | null {
@@ -126,11 +133,15 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
       [Lane.FAILED]: [],
     };
     const scoreCards: Card[] = [];
+    let recentDoneCount = 0;
     for (const c of p.cards) {
       // FAILED cards past the viewer's failedWindowDays are hidden from the
       // board entirely (they still exist in the DB) and excluded from scoring.
       if (c.lane === Lane.FAILED && c.failedAt && c.failedAt.getTime() < failedCutoff.getTime()) {
         continue;
+      }
+      if (c.lane === Lane.DONE && c.doneAt && c.doneAt.getTime() >= failedCutoff.getTime()) {
+        recentDoneCount += 1;
       }
       const { tags, assignee, ...rest } = c;
       const withTags: CardWithTags = { ...rest, tags: joinToChips(tags), assignee };
@@ -152,6 +163,8 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
       isOwner,
       ...(opts.ownerEmail ? { ownerEmail: opts.ownerEmail } : {}),
       ...(opts.pinnedToBoard !== undefined ? { pinnedToBoard: opts.pinnedToBoard } : {}),
+      failedHeat: round2(heatFor(lanes[Lane.FAILED].length, FAILED_HEAT_MAX)),
+      doneHeat: round2(heatFor(recentDoneCount, DONE_HEAT_MAX)),
     };
     return { row, score };
   }
@@ -224,9 +237,13 @@ export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
         [Lane.FAILED]: [],
       };
       const scoreCards: Card[] = [];
+      let recentDoneCount = 0;
       for (const c of p.cards) {
         if (c.lane === Lane.FAILED && c.failedAt && c.failedAt.getTime() < failedCutoff.getTime()) {
           continue;
+        }
+        if (c.lane === Lane.DONE && c.doneAt && c.doneAt.getTime() >= failedCutoff.getTime()) {
+          recentDoneCount += 1;
         }
         const { tags, assignee, ...rest } = c;
         lanes[c.lane].push({ ...rest, tags: joinToChips(tags), assignee });
@@ -248,6 +265,8 @@ export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
         isOwner: false,
         ownerEmail: user.email,
         pinnedToBoard: s.pinnedToBoard,
+        failedHeat: round2(heatFor(lanes[Lane.FAILED].length, FAILED_HEAT_MAX)),
+        doneHeat: round2(heatFor(recentDoneCount, DONE_HEAT_MAX)),
       };
       return { row, score };
     });
@@ -337,6 +356,7 @@ export type CardSummary = Pick<
   | "expires"
   | "failedAt"
   | "rescuedAt"
+  | "doneAt"
   | "recurrence"
   | "seriesId"
 > & { tags: TagChip[] };
@@ -389,6 +409,7 @@ export async function listCards(
       expires: true,
       failedAt: true,
       rescuedAt: true,
+      doneAt: true,
       recurrence: true,
       seriesId: true,
       tags: { include: { tag: true } },

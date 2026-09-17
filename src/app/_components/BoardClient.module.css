@@ -302,11 +302,6 @@
   height: 100%;
 }
 
-.laneCellOver {
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
-}
-
 /* Minimized rows: lanes cap at roughly three cards' worth of height, with
    internal scroll for the rest. */
 .laneCellMinimized:not(.laneCellDone):not(.laneCellFailed) .laneInner {
@@ -330,11 +325,36 @@
      grid row is shaped by them. No extra constraint needed here. */
 }
 
-/* Failed lane: muted/danger tint — a heads-up without being as loud as an
-   overdue card border. */
+/* Failed/Done lanes: tint scales with activity via a --heat custom property
+   (0..1) set inline per-project in LaneCell. At heat 0 the color-mix
+   percentage collapses to 0%, so the cell is pixel-identical to a neutral
+   .laneCell — no separate "no heat" rule needed. */
 .laneCellFailed {
-  background: color-mix(in srgb, var(--danger) 6%, color-mix(in srgb, var(--surface) 50%, transparent));
-  border-color: color-mix(in srgb, var(--danger) 22%, var(--border));
+  background: color-mix(
+    in srgb,
+    var(--danger) calc(var(--heat, 0) * 10%),
+    color-mix(in srgb, var(--surface) 50%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--danger) calc(var(--heat, 0) * 40%), var(--border));
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.laneCellDone {
+  background: color-mix(
+    in srgb,
+    var(--success) calc(var(--heat, 0) * 10%),
+    color-mix(in srgb, var(--surface) 50%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--success) calc(var(--heat, 0) * 40%), var(--border));
+  transition: background 0.3s, border-color 0.3s;
+}
+
+/* Declared after the heat-tint rules (same specificity as each) so an
+   active drag-over always wins the background/border, regardless of a
+   Done/Failed lane's current tint. */
+.laneCellOver {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
 }
 
 /* Project row collapsed: lane cells shrink to a transparent strip and hide

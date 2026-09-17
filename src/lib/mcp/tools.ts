@@ -299,7 +299,7 @@ const deleteProject: Tool = {
 const listCards: Tool = {
   name: "list_cards",
   description:
-    "List cards across all projects (summaries only — no body — but includes dueAt, expires, recurrence, and seriesId). Filter by projectId, lane, and/or tag sets: tagsAny (OR), tagsAll (AND), tagsNot (exclude).",
+    "List cards across all projects (summaries only — no body — but includes dueAt, expires, recurrence, seriesId, and doneAt). Filter by projectId, lane, and/or tag sets: tagsAny (OR), tagsAll (AND), tagsNot (exclude).",
   inputSchema: {
     type: "object",
     properties: {
@@ -368,6 +368,7 @@ const getCard: Tool = {
       expires: card.expires,
       failedAt: card.failedAt ? card.failedAt.toISOString() : null,
       rescuedAt: card.rescuedAt ? card.rescuedAt.toISOString() : null,
+      doneAt: card.doneAt ? card.doneAt.toISOString() : null,
       recurrence: safeParseRecurrence(card.recurrence),
       seriesId: card.seriesId,
       createdAt: card.createdAt,

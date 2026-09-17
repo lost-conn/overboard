@@ -374,12 +374,18 @@ export async function moveCard(
   // Spawn the next recurrence instance when a card enters DONE — but not on
   // a reorder within DONE (that's the same lane, not an entrance).
   const entersDone = toLane === Lane.DONE && card.lane !== Lane.DONE;
+  const leavesDone = card.lane === Lane.DONE && toLane !== Lane.DONE;
   const sameLane = card.lane === toLane;
   // Auto-assign to the mover only matters on shared projects; on solo projects
   // there's no one to disambiguate, so don't stamp an assignee.
   const isShared = card.project.shares.length > 0;
   const autoAssign = isShared && toLane === Lane.DOING ? { assigneeId: userId } : {};
   const now = new Date();
+  const doneAtChange = entersDone
+    ? { doneAt: now }
+    : leavesDone
+      ? { doneAt: null }
+      : {};
 
   await db.$transaction(async (tx) => {
     const source = await tx.card.findMany({
@@ -421,7 +427,7 @@ export async function moveCard(
       if (finalTarget[i].id === card.id) {
         await tx.card.update({
           where: { id: card.id },
-          data: { lane: toLane, order: i, ...autoAssign },
+          data: { lane: toLane, order: i, ...autoAssign, ...doneAtChange },
         });
       } else {
         await tx.card.update({ where: { id: finalTarget[i].id }, data: { order: i } });
@@ -514,7 +520,7 @@ export async function rescueCard(userId: string, cardId: string): Promise<void> 
       // No spawn here: the next occurrence was already created when this
       // card entered FAILED (see sweepDueCards). Rescuing just recovers the
       // original card into Done; it must not spawn a second time.
-      data: { lane: Lane.DONE, order, rescuedAt: now },
+      data: { lane: Lane.DONE, order, rescuedAt: now, doneAt: now },
     });
   });
   await emitBoardForProject(card.projectId);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -107,6 +107,8 @@ export type ClientProject = {
   scheduleMode: ScheduleMode;
   classId: string | null;
   schedule: ClassSchedule | null;
+  failedHeat: number;
+  doneHeat: number;
 };
 
 export type ClientClass = { id: string; name: string };
@@ -1042,6 +1044,7 @@ function ProjectRow({
           dndDisabled={dndDisabled}
           now={now}
           inactive={!active}
+          heat={lane === "FAILED" ? project.failedHeat : lane === "DONE" ? project.doneHeat : undefined}
         />
       ))}
     </>
@@ -1200,6 +1203,7 @@ function LaneCell({
   dndDisabled,
   now,
   inactive,
+  heat,
 }: {
   projectId: string;
   lane: LaneKey;
@@ -1211,6 +1215,8 @@ function LaneCell({
   dndDisabled: boolean;
   now: Date;
   inactive: boolean;
+  // Activity-scaled tint for FAILED/DONE lanes only (0..1); undefined elsewhere.
+  heat?: number;
 }) {
   const [addingPos, setAddingPos] = useState<"top" | "bottom" | null>(null);
   const isFailed = lane === "FAILED";
@@ -1240,8 +1246,13 @@ function LaneCell({
     .filter(Boolean)
     .join(" ");
 
+  const heatStyle =
+    heat !== undefined
+      ? ({ "--heat": heat } as CSSProperties & Record<string, string | number>)
+      : undefined;
+
   return (
-    <div ref={droppable.setNodeRef} className={cellClass}>
+    <div ref={droppable.setNodeRef} className={cellClass} style={heatStyle}>
       {!isRowCollapsed && isLaneCollapsed && cards.length > 0 ? (
         <span
           className={`${styles.laneCellCollapsedCount} ${

@@ -8,6 +8,7 @@
   --accent-hover: #115e59;
   --danger: #b91c1c;
   --warning: #b45309;
+  --success: #15803d;
   --radius: 6px;
 }
 
@@ -22,6 +23,7 @@
     --accent-hover: #5eead4;
     --danger: #f87171;
     --warning: #fbbf24;
+    --success: #4ade80;
     color-scheme: dark;
   }
 }

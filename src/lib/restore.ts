@@ -39,6 +39,8 @@ export type BackupCard = {
   expires: boolean;
   failedAt: string | null;
   rescuedAt: string | null;
+  // Absent on old backups (pre done-lane-heat feature): default to null.
+  doneAt: string | null;
   recurrence: string | null;
   seriesId: string | null;
   tags: string[];
@@ -251,6 +253,7 @@ export function parseBackup(raw: unknown): Backup {
           // Absent on old backups (pre failed-lane feature): default to null (never failed/rescued).
           failedAt: asDateOrNull(c.failedAt, `${where}.failedAt`),
           rescuedAt: asDateOrNull(c.rescuedAt, `${where}.rescuedAt`),
+          doneAt: asDateOrNull(c.doneAt, `${where}.doneAt`),
           // Absent on old backups (pre recurring-cards feature): default to null.
           recurrence: asStringOrNull(c.recurrence, `${where}.recurrence`),
           seriesId: asStringOrNull(c.seriesId, `${where}.seriesId`),
@@ -405,6 +408,7 @@ export async function importBackup(
             ...(c.dueAt ? { dueAt: new Date(c.dueAt) } : {}),
             ...(c.failedAt ? { failedAt: new Date(c.failedAt) } : {}),
             ...(c.rescuedAt ? { rescuedAt: new Date(c.rescuedAt) } : {}),
+            ...(c.doneAt ? { doneAt: new Date(c.doneAt) } : {}),
           },
           select: { id: true },
         });

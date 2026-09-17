@@ -121,6 +121,7 @@ model Card {
   expires     Boolean   @default(false)
   failedAt    DateTime?
   rescuedAt   DateTime?
+  doneAt      DateTime?
   recurrence  String?
   seriesId    String?
   createdAt   DateTime  @default(now())
