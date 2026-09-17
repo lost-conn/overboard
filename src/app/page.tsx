@@ -149,9 +149,9 @@ function toClientProject(p: ProjectRow, currentUserId: string): ClientProject {
     isOwner: p.isOwner,
     ownerId: p.isOwner ? currentUserId : p.userId,
     ownerEmail: p.ownerEmail,
-    scheduleMode: p.scheduleMode,
-    classId: p.classId,
-    schedule: p.schedule,
+    omnipresent: p.omnipresent,
+    classIds: p.classIds,
+    schedules: p.schedules,
     failedHeat: p.failedHeat,
     doneHeat: p.doneHeat,
   };

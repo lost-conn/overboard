@@ -41,6 +41,7 @@ import { rescueCardAction } from "@/lib/actions/board";
 import { setProjectScheduleAction } from "@/lib/actions/classes";
 import { CardDrawer, type DrawerCard } from "./CardDrawer";
 import { ShareDialog } from "./ShareDialog";
+import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
 import { TagChip, TagChipOverflow } from "./TagChip";
 import {
   TagFilterBar,
@@ -54,9 +55,7 @@ import { describeRecurrence, type RecurrenceRule } from "@/lib/board/recurrence"
 import {
   isProjectActive,
   nextHourBoundary,
-  SCHEDULE_MODE_LABELS,
   type ClassSchedule,
-  type ScheduleMode,
 } from "@/lib/board/schedule";
 import styles from "./BoardClient.module.css";
 
@@ -104,9 +103,9 @@ export type ClientProject = {
   ownerId: string;
   ownerEmail?: string;
   pinnedToBoard?: boolean;
-  scheduleMode: ScheduleMode;
-  classId: string | null;
-  schedule: ClassSchedule | null;
+  omnipresent: boolean;
+  classIds: string[];
+  schedules: ClassSchedule[];
   failedHeat: number;
   doneHeat: number;
 };
@@ -373,7 +372,7 @@ export function BoardClient({
   const activeById = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const p of localProjects) {
-      map.set(p.id, isProjectActive(p.scheduleMode, p.schedule, scheduleNow));
+      map.set(p.id, isProjectActive({ omnipresent: p.omnipresent, schedules: p.schedules }, scheduleNow));
     }
     return map;
   }, [localProjects, scheduleNow]);
@@ -542,29 +541,30 @@ export function BoardClient({
     }
   };
 
-  const handleScheduleChange = (projectId: string, mode: ScheduleMode, classId: string | null) => {
+  const handleScheduleChange = (projectId: string, next: ScheduleValue) => {
     setLocalProjects((prev) =>
       prev.map((p) =>
         p.id === projectId
           ? {
               ...p,
-              scheduleMode: mode,
-              classId: mode === "CLASS" ? classId : null,
-              // The full class schedule (tz + windows) isn't available
+              omnipresent: next.omnipresent,
+              classIds: next.classIds,
+              // The full class schedules (tz + windows) aren't available
               // client-side (only id/name are passed in `classes`); clearing
-              // it here is fine — the board's SSE-driven refresh replaces
+              // them here is fine — the board's SSE-driven refresh replaces
               // localProjects with server-accurate data moments later, and
-              // isProjectActive defensively treats a null CLASS schedule as
-              // active in the meantime.
-              schedule: null,
+              // an omnipresent=false project with no resolved schedules is
+              // (correctly, if briefly) treated as inactive/out of mind in
+              // the meantime unless it's omnipresent.
+              schedules: [],
             }
           : p,
       ),
     );
     void setProjectScheduleAction({
       projectId,
-      mode,
-      classId: mode === "CLASS" ? (classId ?? undefined) : undefined,
+      omnipresent: next.omnipresent,
+      classIds: next.classIds,
     });
   };
 
@@ -795,11 +795,6 @@ function renderDragOverlay(active: DragData | null, projects: ClientProject[]) {
   return null;
 }
 
-function scheduleSelectValue(project: ClientProject): string {
-  if (project.scheduleMode === "CLASS" && project.classId) return `class:${project.classId}`;
-  return project.scheduleMode;
-}
-
 function ProjectRow({
   project,
   viewState,
@@ -825,25 +820,10 @@ function ProjectRow({
   now: Date;
   active: boolean;
   classes: ClientClass[];
-  onScheduleChange: (projectId: string, mode: ScheduleMode, classId: string | null) => void;
+  onScheduleChange: (projectId: string, next: ScheduleValue) => void;
 }) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const cardCount = Object.values(project.lanes).reduce((n, cs) => n + cs.length, 0);
-
-  const handleScheduleSelect = (raw: string) => {
-    if (raw === "manage") {
-      router.push("/settings/classes");
-      return;
-    }
-    if (raw === "ALWAYS" || raw === "NEVER") {
-      onScheduleChange(project.id, raw, null);
-      return;
-    }
-    if (raw.startsWith("class:")) {
-      onScheduleChange(project.id, "CLASS", raw.slice("class:".length));
-    }
-  };
 
   const handleDeleteProject = () => {
     if (!confirm(`Delete project "${project.name}" and all ${cardCount} card(s)?`)) return;
@@ -923,26 +903,12 @@ function ProjectRow({
 
   const scheduleEl = (
     <div className={styles.scheduleRow}>
-      <select
-        className={styles.scheduleSelect}
-        value={scheduleSelectValue(project)}
-        onChange={(e) => handleScheduleSelect(e.target.value)}
-        title="Schedule"
-        aria-label={`Schedule for ${project.name}`}
-      >
-        <option value="ALWAYS">{SCHEDULE_MODE_LABELS.ALWAYS}</option>
-        <option value="NEVER">{SCHEDULE_MODE_LABELS.NEVER}</option>
-        {classes.length > 0 ? (
-          <optgroup label="Classes">
-            {classes.map((c) => (
-              <option key={c.id} value={`class:${c.id}`}>
-                {c.name}
-              </option>
-            ))}
-          </optgroup>
-        ) : null}
-        <option value="manage">Manage classes…</option>
-      </select>
+      <SchedulePicker
+        projectName={project.name}
+        value={{ omnipresent: project.omnipresent, classIds: project.classIds }}
+        classes={classes}
+        onChange={(next) => onScheduleChange(project.id, next)}
+      />
       {!active ? <span className={styles.projectInactiveBadge}>inactive</span> : null}
       {!isRowCollapsed && <span className={styles.projectCount}>{cardCount}</span>}
     </div>

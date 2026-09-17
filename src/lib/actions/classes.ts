@@ -71,14 +71,14 @@ export async function deleteClassAction(id: string): Promise<void> {
 
 export async function setProjectScheduleAction(args: {
   projectId: string;
-  mode: string;
-  classId?: string | null;
+  omnipresent: boolean;
+  classIds: string[];
 }): Promise<void> {
   const userId = await requireUserId();
   try {
     await classes.setProjectSchedule(userId, args.projectId, {
-      mode: args.mode,
-      classId: args.classId,
+      omnipresent: args.omnipresent,
+      classIds: args.classIds,
     });
   } catch (err) {
     swallowUserErrors(err);

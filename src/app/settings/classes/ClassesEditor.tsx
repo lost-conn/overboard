@@ -51,7 +51,7 @@ export function ClassesEditor({ classes }: { classes: ProjectClassRow[] }) {
   const handleDelete = (cls: ProjectClassRow) => {
     if (
       !confirm(
-        `Delete class "${cls.name}"? ${cls.projectCount} project(s) using it will revert to Omnipresent.`,
+        `Delete class "${cls.name}"? ${cls.projectCount} project assignment(s) will be removed; projects left with nothing selected become out of mind.`,
       )
     ) {
       return;
@@ -68,10 +68,10 @@ export function ClassesEditor({ classes }: { classes: ProjectClassRow[] }) {
         <div className={styles.empty}>
           <div className={styles.emptyTitle}>No schedule classes yet.</div>
           <p className={styles.emptyBody}>
-            Every project is either <strong>Omnipresent</strong> (always on the board) or{" "}
-            <strong>Out of mind</strong> (never shown) — those two are built in. A class is for
-            anything in between: projects that should only appear during work hours, on weekends,
-            or on some other recurring window.
+            Every project can be <strong>Omnipresent</strong> (always on the board) — that&apos;s
+            built in. A class is for anything in between: projects that should only appear during
+            work hours, on weekends, or on some other recurring window. A project with nothing
+            selected is <strong>out of mind</strong>.
           </p>
         </div>
       ) : (

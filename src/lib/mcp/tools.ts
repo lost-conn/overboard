@@ -189,7 +189,7 @@ const whoami: Tool = {
 const listProjects: Tool = {
   name: "list_projects",
   description:
-    "List the user's projects (kanban board rows). Excludes archived unless requested. Each entry includes scheduleMode (ALWAYS/NEVER/CLASS), classId (set when mode is CLASS), and activeNow (whether the project's schedule currently marks it active, evaluated at call time) — see list_classes/set_project_schedule.",
+    "List the user's projects (kanban board rows). Excludes archived unless requested. Each entry includes omnipresent (the built-in \"always active\" flag), classIds (schedule classes assigned to this project, any-of), and activeNow (whether the project's schedule currently marks it active — omnipresent || any assigned class is active right now; no classes and not omnipresent means out of mind) — see list_classes/set_project_schedule.",
   inputSchema: {
     type: "object",
     properties: {
@@ -881,7 +881,7 @@ const WINDOW_SCHEMA: JsonSchema = {
 const listClassesTool: Tool = {
   name: "list_classes",
   description:
-    "List the user's schedule classes (reusable named hour-of-week schedules used to mark a project active/inactive). Each entry includes a projectCount of how many of the user's projects/shares currently use it. Built-in ALWAYS/NEVER modes are virtual and not listed here — only CLASS-mode schedules are stored classes.",
+    "List the user's schedule classes (reusable named hour-of-week schedules used to mark a project active/inactive). Each entry includes a projectCount of how many of the user's project/share assignments (link rows) currently use it. The built-in \"Omnipresent\" flag lives directly on each project (see list_projects) and isn't a stored class.",
   inputSchema: EMPTY_OBJECT_SCHEMA,
   handler: async (ctx) => ({ classes: await classesLib.listClasses(ctx.userId) }),
 };
@@ -938,7 +938,7 @@ const updateClassTool: Tool = {
 const deleteClassTool: Tool = {
   name: "delete_class",
   description:
-    "Delete a schedule class. Any of the user's projects/shares currently assigned to it revert to ALWAYS (mode) with no class first.",
+    "Delete a schedule class. Any of the user's project/share assignments (link rows) currently using it are removed; a project left with nothing selected (not omnipresent, no other classes) becomes out of mind.",
   inputSchema: {
     type: "object",
     properties: { id: { type: "string" } },
@@ -955,23 +955,28 @@ const deleteClassTool: Tool = {
 const setProjectSchedule: Tool = {
   name: "set_project_schedule",
   description:
-    "Set a project's schedule mode from your own point of view (mirrors set_project_priority: for a shared project this only changes your own view, not the owner's or other viewers'). mode is one of ALWAYS (\"Omnipresent\", always active), NEVER (\"Out of mind\", never active), or CLASS (active per a schedule class you own — classId is required in that case).",
+    "Set a project's schedule from your own point of view (mirrors set_project_priority: for a shared project this only changes your own view, not the owner's or other viewers'). `omnipresent` is the built-in \"always active\" flag; `classIds` is the full replacement set of schedule classes (you own) assigned to this project — the project is active if omnipresent OR any assigned class is currently active (any-of). Omit a field to leave it unchanged; passing `omnipresent: false, classIds: []` means out of mind (nothing selected).",
   inputSchema: {
     type: "object",
     properties: {
       projectId: { type: "string" },
-      mode: { type: "string", enum: ["ALWAYS", "NEVER", "CLASS"] },
-      classId: { type: "string", description: "Required when mode is CLASS. Must be a class you own." },
+      omnipresent: { type: "boolean" },
+      classIds: { type: "array", items: { type: "string" }, description: "Must be classes you own." },
     },
-    required: ["projectId", "mode"],
+    required: ["projectId"],
     additionalProperties: false,
   },
   handler: async (ctx, args) => {
     const rec = asRecord(args);
-    await classesLib.setProjectSchedule(ctx.userId, requireString(rec, "projectId"), {
-      mode: requireString(rec, "mode"),
-      classId: optionalString(rec, "classId"),
-    });
+    const projectId = requireString(rec, "projectId");
+    const current = (await boardQ.listProjects(ctx.userId, { includeArchived: true })).find(
+      (p) => p.id === projectId,
+    );
+    const omnipresent = typeof rec.omnipresent === "boolean" ? rec.omnipresent : (current?.omnipresent ?? true);
+    const classIds = Array.isArray(rec.classIds)
+      ? rec.classIds.filter((c): c is string => typeof c === "string")
+      : (current?.classIds ?? []);
+    await classesLib.setProjectSchedule(ctx.userId, projectId, { omnipresent, classIds });
     return { ok: true };
   },
 };

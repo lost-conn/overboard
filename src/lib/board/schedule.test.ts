@@ -8,6 +8,7 @@ import {
   isActiveAt,
   isProjectActive,
   nextHourBoundary,
+  type ClassSchedule,
   type ScheduleWindow,
 } from "./schedule";
 
@@ -215,28 +216,40 @@ test("weekly window is timezone-sensitive across a UTC date boundary", () => {
 
 // ---- isProjectActive ----------------------------------------------------------
 
-test("isProjectActive: ALWAYS is always true, NEVER is always false", () => {
+test("isProjectActive: omnipresent is always true regardless of schedules", () => {
   const now = new Date("2026-06-15T12:00:00.000Z");
-  assert.equal(isProjectActive("ALWAYS", null, now), true);
-  assert.equal(isProjectActive("NEVER", null, now), false);
+  assert.equal(isProjectActive({ omnipresent: true, schedules: [] }, now), true);
+  assert.equal(
+    isProjectActive(
+      { omnipresent: true, schedules: [{ tz: "UTC", windows: [{ kind: "weekly", weekdays: [2], startHour: 9, endHour: 17 }] }] },
+      now,
+    ),
+    true,
+  );
 });
 
-test("isProjectActive: CLASS defers to isActiveAt, and a null schedule defaults active", () => {
+test("isProjectActive: not omnipresent with no schedules is out of mind", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+  assert.equal(isProjectActive({ omnipresent: false, schedules: [] }, now), false);
+});
+
+test("isProjectActive: not omnipresent is active if ANY assigned schedule is active", () => {
   const now = new Date("2026-06-15T12:00:00.000Z"); // Monday noon UTC
-  const schedule = {
+  const activeSchedule: ClassSchedule = {
     tz: "UTC",
     windows: [{ kind: "weekly", weekdays: [1], startHour: 9, endHour: 17 } as ScheduleWindow],
   };
-  assert.equal(isProjectActive("CLASS", schedule, now), true);
+  const inactiveSchedule: ClassSchedule = {
+    tz: "UTC",
+    windows: [{ kind: "weekly", weekdays: [2], startHour: 9, endHour: 17 } as ScheduleWindow],
+  };
+  assert.equal(isProjectActive({ omnipresent: false, schedules: [activeSchedule] }, now), true);
+  assert.equal(isProjectActive({ omnipresent: false, schedules: [inactiveSchedule] }, now), false);
+  // Any-of: one active among several makes the project active.
   assert.equal(
-    isProjectActive(
-      "CLASS",
-      { tz: "UTC", windows: [{ kind: "weekly", weekdays: [2], startHour: 9, endHour: 17 }] },
-      now,
-    ),
-    false,
+    isProjectActive({ omnipresent: false, schedules: [inactiveSchedule, activeSchedule] }, now),
+    true,
   );
-  assert.equal(isProjectActive("CLASS", null, now), true); // defensive default
 });
 
 // ---- nextHourBoundary -----------------------------------------------------------

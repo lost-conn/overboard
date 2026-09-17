@@ -19,6 +19,7 @@ export async function GET() {
           orderBy: { order: "asc" },
           include: { tags: { include: { tag: true } } },
         },
+        classLinks: { where: { userId }, select: { classId: true } },
       },
     }),
     db.idea.findMany({
@@ -40,11 +41,12 @@ export async function GET() {
   const backup = {
     version: 1,
     exportedAt: new Date().toISOString(),
-    // classId here is this server's ProjectClass.id — import.ts remaps it
-    // old->new the same way it remaps seriesId (see restore.ts), matching by
+    // classIds here are this server's ProjectClass.id values — restore.ts
+    // remaps them old->new the same way it remaps seriesId, matching by
     // class *name* against the `classes` list below.
-    projects: projects.map(({ userId: _, cards, ...proj }) => ({
+    projects: projects.map(({ userId: _, cards, classLinks, ...proj }) => ({
       ...proj,
+      classIds: classLinks.map((l) => l.classId),
       cards: cards.map(({ tags, ...card }) => ({
         ...card,
         tags: joinToChips(tags).map((t) => t.name),

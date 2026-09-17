@@ -7,7 +7,7 @@ import { joinToChips, type TagChip } from "@/lib/tags";
 import { compareProjects, scoreProject } from "./sorting";
 import { sweepDueCards } from "./mutations";
 import { emitBoardForProject } from "./access";
-import { isProjectActive, parseWindows, type ClassSchedule, type ScheduleMode } from "./schedule";
+import { isProjectActive, parseWindows, type ClassSchedule } from "./schedule";
 import { heatFor, FAILED_HEAT_MAX, DONE_HEAT_MAX } from "./heat";
 
 export const LANES = [Lane.BACKLOG, Lane.TODO, Lane.DOING, Lane.DONE, Lane.FAILED] as const;
@@ -32,24 +32,31 @@ export type CardWithTags = Card & {
   assignee?: { id: string; email: string } | null;
 };
 
-export type ProjectRow = Project & {
+export type ProjectRow = Omit<Project, "omnipresent"> & {
   lanes: Record<(typeof LANES)[number], CardWithTags[]>;
   isShared: boolean;
   isOwner: boolean;
   ownerEmail?: string;
   pinnedToBoard?: boolean;
-  // scheduleMode/classId are already on Project, but here they always reflect
-  // the *viewer's* choice: the owner's own Project row for an owned project,
-  // or the viewer's ProjectShare row for a shared one (mirrors `priority`).
-  schedule: ClassSchedule | null; // the resolved class's tz+parsed windows, or null under ALWAYS/NEVER/dangling classId
-  activeNow: boolean; // isProjectActive(scheduleMode, schedule, <read time>)
+  // omnipresent/classIds/schedules always reflect the *viewer's* choice: the
+  // owner's own Project row for an owned project, or the viewer's
+  // ProjectShare row (+ their own ProjectClassLink rows) for a shared one
+  // (mirrors `priority`).
+  omnipresent: boolean;
+  classIds: string[];
+  schedules: ClassSchedule[]; // resolved tz+parsed windows for each assigned class
+  activeNow: boolean; // isProjectActive({ omnipresent, schedules }, <read time>)
   failedHeat: number; // 0..1, min(visible FAILED count / FAILED_HEAT_MAX, 1)
   doneHeat: number; // 0..1, min(recent DONE count / DONE_HEAT_MAX, 1)
 };
 
-function toClassSchedule(cls: { tz: string; windows: string } | null | undefined): ClassSchedule | null {
-  if (!cls) return null;
-  return { tz: cls.tz, windows: parseWindows(cls.windows) };
+function toClassSchedules(
+  links: { class: { id: string; tz: string; windows: string } }[],
+): { classIds: string[]; schedules: ClassSchedule[] } {
+  return {
+    classIds: links.map((l) => l.class.id),
+    schedules: links.map((l) => ({ tz: l.class.tz, windows: parseWindows(l.class.windows) })),
+  };
 }
 
 // Sweep due cards into FAILED, then notify any *other* open tabs for projects
@@ -74,6 +81,11 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
   const failedWindowDays = await getFailedWindowDays(userId);
   const failedCutoff = new Date(Date.now() - failedWindowDays * MS_PER_DAY);
 
+  const classLinksInclude = {
+    where: { userId },
+    include: { class: { select: { id: true, tz: true, windows: true } } },
+  } as const;
+
   const [ownedProjects, sharedLinks] = await Promise.all([
     db.project.findMany({
       where: { userId, archived: false },
@@ -86,7 +98,7 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
           },
         },
         shares: { select: { id: true } },
-        class: { select: { tz: true, windows: true } },
+        classLinks: classLinksInclude,
       },
     }),
     db.projectShare.findMany({
@@ -103,9 +115,9 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
             },
             user: { select: { email: true } },
             shares: { select: { id: true } },
+            classLinks: classLinksInclude,
           },
         },
-        class: { select: { tz: true, windows: true } },
       },
     }),
   ]);
@@ -114,15 +126,15 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
   type SharedLink = typeof sharedLinks[number];
 
   function buildRow(
-    p: Omit<RawProject, "class"> | SharedLink["project"],
+    p: RawProject | SharedLink["project"],
     isOwner: boolean,
     opts: {
       ownerEmail?: string;
       priorityOverride?: number;
       pinnedToBoard?: boolean;
-      scheduleMode: ScheduleMode;
-      classId: string | null;
-      schedule: ClassSchedule | null;
+      omnipresent: boolean;
+      classIds: string[];
+      schedules: ClassSchedule[];
     },
   ): { row: ProjectRow; score: number } {
     const lanes: Record<(typeof LANES)[number], CardWithTags[]> = {
@@ -148,15 +160,16 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
       lanes[c.lane].push(withTags);
       scoreCards.push(rest);
     }
-    const { cards: _cards, shares, ...rest } = p;
+    const { cards: _cards, shares, classLinks: _classLinks, ...rest } = p;
     void _cards;
+    void _classLinks;
     const score = scoreProject(scoreCards, now);
     const row: ProjectRow = {
       ...rest,
-      scheduleMode: opts.scheduleMode,
-      classId: opts.classId,
-      schedule: opts.schedule,
-      activeNow: isProjectActive(opts.scheduleMode, opts.schedule, now),
+      omnipresent: opts.omnipresent,
+      classIds: opts.classIds,
+      schedules: opts.schedules,
+      activeNow: isProjectActive({ omnipresent: opts.omnipresent, schedules: opts.schedules }, now),
       ...(opts.priorityOverride !== undefined ? { priority: opts.priorityOverride } : {}),
       lanes,
       isShared: shares.length > 0,
@@ -172,22 +185,21 @@ export async function getBoardForUser(userId: string): Promise<ProjectRow[]> {
   const now = new Date();
   const ranked = [
     ...ownedProjects.map((p) => {
-      const { class: classRel, ...proj } = p;
-      return buildRow(proj, true, {
-        scheduleMode: proj.scheduleMode,
-        classId: proj.classId,
-        schedule: toClassSchedule(classRel),
-      });
+      const { classIds, schedules } = toClassSchedules(p.classLinks);
+      return buildRow(p, true, { omnipresent: p.omnipresent, classIds, schedules });
     }),
     ...sharedLinks
       .filter((s) => !s.project.archived)
-      .map((s) => buildRow(s.project, false, {
-        ownerEmail: s.project.user.email,
-        priorityOverride: s.priority,
-        scheduleMode: s.scheduleMode,
-        classId: s.classId,
-        schedule: toClassSchedule(s.class),
-      })),
+      .map((s) => {
+        const { classIds, schedules } = toClassSchedules(s.project.classLinks);
+        return buildRow(s.project, false, {
+          ownerEmail: s.project.user.email,
+          priorityOverride: s.priority,
+          omnipresent: s.omnipresent,
+          classIds,
+          schedules,
+        });
+      }),
   ];
 
   ranked.sort((a, b) =>
@@ -218,9 +230,12 @@ export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
           },
           user: { select: { email: true } },
           shares: { select: { id: true } },
+          classLinks: {
+            where: { userId },
+            include: { class: { select: { id: true, tz: true, windows: true } } },
+          },
         },
       },
-      class: { select: { tz: true, windows: true } },
     },
   });
 
@@ -249,17 +264,17 @@ export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
         lanes[c.lane].push({ ...rest, tags: joinToChips(tags), assignee });
         scoreCards.push(rest);
       }
-      const { cards: _cards, shares, user, ...rest } = p;
+      const { cards: _cards, shares, user, classLinks, ...rest } = p;
       void _cards;
       const score = scoreProject(scoreCards, now);
-      const schedule = toClassSchedule(s.class);
+      const { classIds, schedules } = toClassSchedules(classLinks);
       const row: ProjectRow = {
         ...rest,
         priority: s.priority,
-        scheduleMode: s.scheduleMode,
-        classId: s.classId,
-        schedule,
-        activeNow: isProjectActive(s.scheduleMode, schedule, now),
+        omnipresent: s.omnipresent,
+        classIds,
+        schedules,
+        activeNow: isProjectActive({ omnipresent: s.omnipresent, schedules }, now),
         lanes,
         isShared: shares.length > 0,
         isOwner: false,
@@ -282,8 +297,8 @@ export async function getSharedBoard(userId: string): Promise<ProjectRow[]> {
 
 export type ProjectSummary = Pick<
   Project,
-  "id" | "name" | "priority" | "archived" | "createdAt" | "updatedAt" | "scheduleMode" | "classId"
-> & { isOwner: boolean; ownerEmail?: string; activeNow: boolean };
+  "id" | "name" | "priority" | "archived" | "createdAt" | "updatedAt"
+> & { isOwner: boolean; ownerEmail?: string; omnipresent: boolean; classIds: string[]; activeNow: boolean };
 
 export async function listProjects(
   userId: string,
@@ -291,14 +306,18 @@ export async function listProjects(
 ): Promise<ProjectSummary[]> {
   const archiveFilter = opts.includeArchived ? {} : { archived: false };
   const now = new Date();
+  const classLinksSelect = {
+    where: { userId },
+    include: { class: { select: { id: true, tz: true, windows: true } } },
+  } as const;
   const [owned, sharedLinks] = await Promise.all([
     db.project.findMany({
       where: { userId, ...archiveFilter },
       orderBy: [{ priority: "asc" }, { name: "asc" }],
       select: {
         id: true, name: true, priority: true, archived: true,
-        createdAt: true, updatedAt: true, scheduleMode: true, classId: true,
-        class: { select: { tz: true, windows: true } },
+        createdAt: true, updatedAt: true, omnipresent: true,
+        classLinks: classLinksSelect,
       },
     }),
     db.projectShare.findMany({
@@ -309,34 +328,35 @@ export async function listProjects(
             id: true, name: true, priority: true, archived: true,
             createdAt: true, updatedAt: true,
             user: { select: { email: true } },
+            classLinks: classLinksSelect,
           },
         },
-        class: { select: { tz: true, windows: true } },
       },
     }),
   ]);
   const shared = sharedLinks
     .filter((s) => opts.includeArchived || !s.project.archived)
     .map((s) => {
-      const { user, ...proj } = s.project;
-      const schedule = toClassSchedule(s.class);
+      const { user, classLinks, ...proj } = s.project;
+      const { classIds, schedules } = toClassSchedules(classLinks);
       return {
         ...proj,
         isOwner: false,
         ownerEmail: user.email,
-        scheduleMode: s.scheduleMode,
-        classId: s.classId,
-        activeNow: isProjectActive(s.scheduleMode, schedule, now),
+        omnipresent: s.omnipresent,
+        classIds,
+        activeNow: isProjectActive({ omnipresent: s.omnipresent, schedules }, now),
       } as ProjectSummary;
     });
   return [
     ...owned.map((p) => {
-      const { class: classRel, ...proj } = p;
-      const schedule = toClassSchedule(classRel);
+      const { classLinks, ...proj } = p;
+      const { classIds, schedules } = toClassSchedules(classLinks);
       return {
         ...proj,
         isOwner: true,
-        activeNow: isProjectActive(proj.scheduleMode, schedule, now),
+        classIds,
+        activeNow: isProjectActive({ omnipresent: proj.omnipresent, schedules }, now),
       } as ProjectSummary;
     }),
     ...shared,

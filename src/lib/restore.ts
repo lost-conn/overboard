@@ -1,10 +1,9 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { Lane } from "@/generated/prisma/enums";
-import { ScheduleMode as PrismaScheduleMode } from "@/generated/prisma/enums";
 import { ValidationError } from "@/lib/errors";
 import { publish } from "@/lib/events/bus";
-import { parseWindows, serializeWindows, validateTz, type ScheduleMode } from "@/lib/board/schedule";
+import { parseWindows, serializeWindows, validateTz } from "@/lib/board/schedule";
 
 // Import counterpart to the backup export in src/app/api/backup/route.ts.
 // The backup file is user-scoped data only (projects, cards, ideas, tags,
@@ -19,7 +18,10 @@ const MAX_PROJECT_NAME = 120;
 const MAX_TITLE = 200;
 const MAX_TAG_NAME = 32;
 const MAX_CLASS_NAME = 60;
-const SCHEDULE_MODE_VALUES: ScheduleMode[] = ["ALWAYS", "NEVER", "CLASS"];
+// Old backups (pre multi-class) stored a single scheduleMode/classId instead
+// of omnipresent/classIds; kept here only to translate them on import.
+const OLD_SCHEDULE_MODE_VALUES = ["ALWAYS", "NEVER", "CLASS"] as const;
+type OldScheduleMode = (typeof OLD_SCHEDULE_MODE_VALUES)[number];
 const MAX_TAGS_PER_ITEM = 16;
 
 export type ImportMode = "merge" | "replace";
@@ -51,12 +53,14 @@ export type BackupProject = {
   priority: number;
   archived: boolean;
   createdAt: string | null;
-  // Absent on old backups (pre schedule-classes feature): default ALWAYS/null.
-  scheduleMode: ScheduleMode;
-  // Original classId from the export. Not written directly on import (see
+  // Absent on old backups (pre multi-class feature): default true (mirrors
+  // old ALWAYS). See parseProjectSchedule for translation of old
+  // scheduleMode/classId backups.
+  omnipresent: boolean;
+  // Original classIds from the export. Not written directly on import (see
   // BackupCard.id/seriesId for the same pattern) — remapped old -> new via
-  // the class's name once every class in the backup has its new id.
-  classId: string | null;
+  // each class's name once every class in the backup has its new id.
+  classIds: string[];
   cards: BackupCard[];
 };
 
@@ -170,13 +174,41 @@ function parseLane(v: unknown): Lane {
   return Lane[v as keyof typeof Lane];
 }
 
-// Absent on old backups (pre schedule-classes feature): default ALWAYS.
-function parseScheduleMode(v: unknown, field: string): ScheduleMode {
-  if (v === undefined || v === null) return "ALWAYS";
-  if (typeof v !== "string" || !SCHEDULE_MODE_VALUES.includes(v as ScheduleMode)) {
-    throw new ValidationError(`${field} must be one of ${SCHEDULE_MODE_VALUES.join(", ")}`);
+function normalizeClassIdList(v: unknown, field: string): string[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v)) throw new ValidationError(`${field} must be an array`);
+  return v.map((x, i) => {
+    if (typeof x !== "string") throw new ValidationError(`${field}[${i}] must be a string`);
+    return x;
+  });
+}
+
+// Absent on old backups (pre multi-class feature): default omnipresent true.
+// Old backups carry a single scheduleMode ("ALWAYS"/"NEVER"/"CLASS") +
+// classId instead of omnipresent/classIds — translate: ALWAYS -> omnipresent
+// true, NEVER -> omnipresent false (no classes), CLASS -> omnipresent false
+// with that one class in classIds.
+function parseProjectSchedule(
+  p: Record<string, unknown>,
+  where: string,
+): { omnipresent: boolean; classIds: string[] } {
+  if (p.omnipresent !== undefined || p.classIds !== undefined) {
+    const omnipresent = p.omnipresent === undefined ? true : p.omnipresent === true;
+    const classIds = normalizeClassIdList(p.classIds, `${where}.classIds`);
+    return { omnipresent, classIds };
   }
-  return v as ScheduleMode;
+  if (p.scheduleMode === undefined && p.classId === undefined) {
+    return { omnipresent: true, classIds: [] };
+  }
+  const rawMode = p.scheduleMode;
+  if (typeof rawMode !== "string" || !OLD_SCHEDULE_MODE_VALUES.includes(rawMode as OldScheduleMode)) {
+    throw new ValidationError(`${where}.scheduleMode must be one of ${OLD_SCHEDULE_MODE_VALUES.join(", ")}`);
+  }
+  const mode = rawMode as OldScheduleMode;
+  const classId = asStringOrNull(p.classId, `${where}.classId`);
+  if (mode === "ALWAYS") return { omnipresent: true, classIds: [] };
+  if (mode === "NEVER") return { omnipresent: false, classIds: [] };
+  return { omnipresent: false, classIds: classId ? [classId] : [] };
 }
 
 /**
@@ -229,13 +261,14 @@ export function parseBackup(raw: unknown): Backup {
     if (!isObject(p)) throw new ValidationError(`projects[${i}] must be an object`);
     const rawCards = p.cards ?? [];
     if (!Array.isArray(rawCards)) throw new ValidationError(`projects[${i}].cards must be an array`);
+    const { omnipresent, classIds } = parseProjectSchedule(p, `projects[${i}]`);
     return {
       name: asString(p.name, `projects[${i}].name`, MAX_PROJECT_NAME),
       priority: asInt(p.priority ?? 1, `projects[${i}].priority`),
       archived: p.archived === true,
       createdAt: asDateOrNull(p.createdAt, `projects[${i}].createdAt`),
-      scheduleMode: parseScheduleMode(p.scheduleMode, `projects[${i}].scheduleMode`),
-      classId: asStringOrNull(p.classId, `projects[${i}].classId`),
+      omnipresent,
+      classIds,
       cards: rawCards.map((c, j) => {
         if (!isObject(c)) throw new ValidationError(`projects[${i}].cards[${j}] must be an object`);
         const where = `projects[${i}].cards[${j}]`;
@@ -362,13 +395,12 @@ export async function importBackup(
     }
 
     for (const p of backup.projects) {
-      // Remap classId old -> new via the class-name resolution above. If the
-      // referenced class isn't in this backup (e.g. a partial/edited
-      // export), or the mode is CLASS with no resolvable class, fall back to
-      // ALWAYS/no-class rather than leaving a dangling reference.
-      const remappedClassId = p.classId ? (classIdMap.get(p.classId) ?? null) : null;
-      const scheduleMode = p.scheduleMode === "CLASS" && !remappedClassId ? "ALWAYS" : p.scheduleMode;
-      const classId = scheduleMode === "CLASS" ? remappedClassId : null;
+      // Remap each classId old -> new via the class-name resolution above.
+      // A referenced class not in this backup (e.g. a partial/edited
+      // export) is dropped rather than left as a dangling reference.
+      const remappedClassIds = p.classIds
+        .map((id) => classIdMap.get(id))
+        .filter((id): id is string => Boolean(id));
 
       const project = await tx.project.create({
         data: {
@@ -376,13 +408,18 @@ export async function importBackup(
           name: p.name,
           priority: p.priority,
           archived: p.archived,
-          scheduleMode: PrismaScheduleMode[scheduleMode],
-          classId,
+          omnipresent: p.omnipresent,
           ...(p.createdAt ? { createdAt: new Date(p.createdAt) } : {}),
         },
         select: { id: true },
       });
       counts.projects += 1;
+
+      if (remappedClassIds.length > 0) {
+        await tx.projectClassLink.createMany({
+          data: remappedClassIds.map((classId) => ({ projectId: project.id, userId, classId })),
+        });
+      }
 
       // Card ids are regenerated on import, but a recurring card's `seriesId`
       // points at another card's id within the same project (the series'

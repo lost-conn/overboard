@@ -1,0 +1,91 @@
+.trigger {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 4px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.trigger:hover,
+.trigger:focus-visible {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.trigger[data-state="open"] {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--bg);
+}
+
+.content {
+  min-width: 200px;
+  max-width: 260px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 1.5);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  z-index: 60;
+  animation: fadeIn 0.12s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px;
+  font-size: 13px;
+  color: var(--text);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.row input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+.empty {
+  padding: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.manageLink {
+  display: block;
+  padding: 6px 6px;
+  font-size: 12px;
+  color: var(--accent);
+  border-radius: 4px;
+}
+
+.manageLink:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  text-decoration: underline;
+}

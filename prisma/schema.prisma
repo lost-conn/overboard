@@ -18,12 +18,6 @@ enum Lane {
   FAILED
 }
 
-enum ScheduleMode {
-  ALWAYS
-  NEVER
-  CLASS
-}
-
 model User {
   id               String   @id @default(cuid())
   email            String   @unique
@@ -37,13 +31,14 @@ model User {
   tokens         Token[]
   tags           Tag[]
   classes        ProjectClass[]
+  classLinks     ProjectClassLink[]
   sharedProjects ProjectShare[] @relation("sharedProjects")
   assignedCards  Card[]         @relation("assignedCards")
 }
 
 // A reusable named schedule ("class") that marks a project active/inactive by
-// hour. Built-in ALWAYS/NEVER modes are virtual (no row here) — a
-// ProjectClass row only backs ScheduleMode.CLASS. `windows` is a JSON-encoded
+// hour. The built-in "Omnipresent" flag lives directly on Project/ProjectShare
+// (`omnipresent`) and isn't backed by a row here. `windows` is a JSON-encoded
 // ScheduleWindow[] (see src/lib/board/schedule.ts for the shape/validation).
 model ProjectClass {
   id        String   @id @default(cuid())
@@ -54,12 +49,31 @@ model ProjectClass {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  projects Project[]      @relation("projectScheduleClass")
-  shares   ProjectShare[] @relation("shareScheduleClass")
+  user  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  links ProjectClassLink[]
 
   @@unique([userId, name])
   @@index([userId])
+}
+
+// A viewer's assignment of a project to a class. `userId` is the viewer this
+// assignment belongs to: the owner for their own Project, or a shared
+// viewer for their ProjectShare (mirrors how scheduleMode/priority are
+// per-viewer). A project is active if omnipresent OR any linked class is
+// currently active ("any-of"); no links and omnipresent=false means out of
+// mind.
+model ProjectClassLink {
+  projectId String
+  userId    String
+  classId   String
+
+  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class   ProjectClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId, classId])
+  @@index([userId])
+  @@index([classId])
 }
 
 model Token {
@@ -88,24 +102,22 @@ model Session {
 }
 
 model Project {
-  id           String       @id @default(cuid())
-  userId       String
-  name         String
-  priority     Int          @default(1) // lower = higher in list; can be 0 or negative
-  archived     Boolean      @default(false)
-  scheduleMode ScheduleMode @default(ALWAYS)
-  classId      String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  priority    Int      @default(1) // lower = higher in list; can be 0 or negative
+  archived    Boolean  @default(false)
+  omnipresent Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  class  ProjectClass?  @relation("projectScheduleClass", fields: [classId], references: [id], onDelete: SetNull)
-  cards  Card[]
-  shares ProjectShare[]
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classLinks ProjectClassLink[]
+  cards      Card[]
+  shares     ProjectShare[]
 
   @@index([userId])
   @@index([userId, priority])
-  @@index([classId])
 }
 
 model Card {
@@ -192,21 +204,18 @@ model IdeaTag {
 }
 
 model ProjectShare {
-  id               String       @id @default(cuid())
+  id               String   @id @default(cuid())
   projectId        String
   sharedWithUserId String
-  pinnedToBoard    Boolean      @default(false)
-  priority         Int          @default(1)
-  scheduleMode     ScheduleMode @default(ALWAYS)
-  classId          String?
-  createdAt        DateTime     @default(now())
+  pinnedToBoard    Boolean  @default(false)
+  priority         Int      @default(1)
+  omnipresent      Boolean  @default(true)
+  createdAt        DateTime @default(now())
 
-  project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sharedWith User          @relation("sharedProjects", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
-  class      ProjectClass? @relation("shareScheduleClass", fields: [classId], references: [id], onDelete: SetNull)
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sharedWith User    @relation("sharedProjects", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, sharedWithUserId])
   @@index([sharedWithUserId])
   @@index([projectId])
-  @@index([classId])
 }

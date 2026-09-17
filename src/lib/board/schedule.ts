@@ -9,17 +9,11 @@ export type ScheduleWindow =
   | { kind: "weekly"; weekdays: number[]; startHour: number; endHour: number }
   | { kind: "monthly"; ordinal: 1 | 2 | 3 | 4 | -1; weekday: number; startHour: number; endHour: number };
 
-// Mirrors the Prisma ScheduleMode enum as a string union so this module stays
-// importable without pulling in the generated Prisma client.
-export type ScheduleMode = "ALWAYS" | "NEVER" | "CLASS";
-
 export type ClassSchedule = { tz: string; windows: ScheduleWindow[] };
 
-export const SCHEDULE_MODE_LABELS: Record<ScheduleMode, string> = {
-  ALWAYS: "Omnipresent",
-  NEVER: "Out of mind",
-  CLASS: "Class",
-};
+// The only built-in mode left — everything else is "assigned to N classes,
+// active if any is active" or, with nothing selected, out of mind.
+export const OMNIPRESENT_LABEL = "Omnipresent";
 
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const ORDINAL_VALUES = [1, 2, 3, 4, -1] as const;
@@ -250,15 +244,16 @@ export function isActiveAt(schedule: ClassSchedule, now: Date): boolean {
 }
 
 /**
- * ALWAYS -> true, NEVER -> false, CLASS -> isActiveAt(schedule, now).
- * A null schedule under CLASS mode (e.g. a dangling/deleted class reference
- * that hasn't been cleaned up yet) defensively defaults to active.
+ * omnipresent -> always active. Otherwise active if ANY assigned class's
+ * schedule is currently active ("any-of"); no classes (and not omnipresent)
+ * means out of mind.
  */
-export function isProjectActive(mode: ScheduleMode, schedule: ClassSchedule | null, now: Date): boolean {
-  if (mode === "ALWAYS") return true;
-  if (mode === "NEVER") return false;
-  if (!schedule) return true;
-  return isActiveAt(schedule, now);
+export function isProjectActive(
+  project: { omnipresent: boolean; schedules: ClassSchedule[] },
+  now: Date,
+): boolean {
+  if (project.omnipresent) return true;
+  return project.schedules.some((s) => isActiveAt(s, now));
 }
 
 /**
