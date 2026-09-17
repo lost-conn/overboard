@@ -50,6 +50,14 @@ import {
   useTagFilter,
 } from "./TagFilterBar";
 import { useBoardEvents } from "./useBoardEvents";
+import {
+  COLLAPSED_LANES_STORAGE_KEY,
+  DEFAULT_COLLAPSED_LANES,
+  LANES,
+  LANE_LABELS,
+  resolveCollapsedLanes,
+  type LaneKey,
+} from "@/lib/board/lanes";
 import { describeDue, type DueTier } from "@/lib/board/due";
 import { describeRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
 import {
@@ -59,21 +67,8 @@ import {
 } from "@/lib/board/schedule";
 import styles from "./BoardClient.module.css";
 
-const LANES = ["BACKLOG", "TODO", "DOING", "DONE", "FAILED"] as const;
-type LaneKey = (typeof LANES)[number];
-
-const LANE_LABELS: Record<LaneKey, string> = {
-  BACKLOG: "Backlog",
-  TODO: "To do",
-  DOING: "Doing",
-  DONE: "Done",
-  FAILED: "Failed",
-};
-
 type ViewState = "collapsed" | "minimized" | "expanded";
 
-const DEFAULT_COLLAPSED_LANES: LaneKey[] = ["DONE", "FAILED"];
-const COLLAPSED_LANES_STORAGE_KEY = "overboard.collapsedLanes";
 const SHOW_INACTIVE_STORAGE_KEY = "overboard.showInactive";
 
 export type ClientTag = { id: string; name: string; color: string };
@@ -252,21 +247,15 @@ export function BoardClient({
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(COLLAPSED_LANES_STORAGE_KEY);
-      if (raw) {
-        const parsed: unknown = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          const valid = parsed.filter(
-            (l): l is LaneKey => typeof l === "string" && (LANES as readonly string[]).includes(l),
-          );
-          // One-time sync from an external store (localStorage) on mount.
-          // eslint-disable-next-line react-hooks/set-state-in-effect
-          setCollapsedLanes(new Set(valid));
-        }
-      }
+      // resolveCollapsedLanes keeps any stored preference intact (including an
+      // empty array) and only falls back to the default when there is none, so
+      // changing DEFAULT_COLLAPSED_LANES never rewrites an existing board.
+      const stored = resolveCollapsedLanes(localStorage.getItem(COLLAPSED_LANES_STORAGE_KEY));
+      // One-time sync from an external store (localStorage) on mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCollapsedLanes(new Set(stored));
     } catch {
-      // Invalid JSON or storage inaccessible (private mode, disabled, etc.) —
-      // fall back to the default collapsed set.
+      // Storage inaccessible (private mode, disabled, etc.) — keep the default.
     } finally {
       hasHydratedLanesRef.current = true;
     }
