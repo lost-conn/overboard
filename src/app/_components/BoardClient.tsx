@@ -493,7 +493,9 @@ export function BoardClient({
       } else if (overData?.type === "lane") {
         toProjectId = overData.projectId;
         toLane = overData.lane;
-        toIndex = laneCards(localProjects, toProjectId, toLane).length;
+        // Dropping on the lane background (not a specific card) places the
+        // card at the top, matching the default implicit-placement order.
+        toIndex = 0;
       } else {
         return;
       }
@@ -1086,6 +1088,107 @@ function ViewStateToggle({
   );
 }
 
+// Inline "add card" control used both as a slim hover strip at the top of a
+// lane and as the labeled button at the bottom. `adding` and
+// `onAddingChange` are controlled by the parent LaneCell so only one of the
+// two (top/bottom) instances can be mid-add at a time, which keeps the
+// empty-lane placeholder logic simple.
+function InlineAddForm({
+  projectId,
+  lane,
+  position,
+  adding,
+  onAddingChange,
+}: {
+  projectId: string;
+  lane: LaneKey;
+  position: "top" | "bottom";
+  adding: boolean;
+  onAddingChange: (adding: boolean) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [isPending, startTransition] = useTransition();
+  const submittingRef = useRef(false);
+
+  const submit = () => {
+    if (submittingRef.current) return;
+    const t = title.trim();
+    if (!t) {
+      onAddingChange(false);
+      return;
+    }
+    submittingRef.current = true;
+    const fd = new FormData();
+    fd.set("projectId", projectId);
+    fd.set("lane", lane);
+    fd.set("title", t);
+    fd.set("position", position);
+    startTransition(async () => {
+      try {
+        await createCardAction(fd);
+      } finally {
+        setTitle("");
+        onAddingChange(false);
+        submittingRef.current = false;
+      }
+    });
+  };
+
+  if (adding) {
+    return (
+      <form
+        className={styles.addForm}
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <input
+          className={styles.addInput}
+          autoFocus
+          placeholder="Card title"
+          maxLength={200}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              onAddingChange(false);
+              setTitle("");
+            }
+          }}
+          onBlur={submit}
+          disabled={isPending}
+        />
+      </form>
+    );
+  }
+
+  if (position === "top") {
+    return (
+      <button
+        type="button"
+        className={styles.addTopStrip}
+        onClick={() => onAddingChange(true)}
+        disabled={isPending}
+        aria-label="Add card to top of lane"
+      >
+        <Plus size={11} aria-hidden />
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={styles.addBtn}
+      onClick={() => onAddingChange(true)}
+      disabled={isPending}
+    >
+      <Plus size={12} aria-hidden /> Add card
+    </button>
+  );
+}
+
 function LaneCell({
   projectId,
   lane,
@@ -1109,10 +1212,7 @@ function LaneCell({
   now: Date;
   inactive: boolean;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [title, setTitle] = useState("");
-  const [isPending, startTransition] = useTransition();
-  const submittingRef = useRef(false);
+  const [addingPos, setAddingPos] = useState<"top" | "bottom" | null>(null);
   const isFailed = lane === "FAILED";
 
   const droppable = useDroppable({
@@ -1121,28 +1221,7 @@ function LaneCell({
     disabled: dndDisabled || isFailed,
   });
 
-  const submit = () => {
-    if (submittingRef.current) return;
-    const t = title.trim();
-    if (!t) {
-      setAdding(false);
-      return;
-    }
-    submittingRef.current = true;
-    const fd = new FormData();
-    fd.set("projectId", projectId);
-    fd.set("lane", lane);
-    fd.set("title", t);
-    startTransition(async () => {
-      try {
-        await createCardAction(fd);
-      } finally {
-        setTitle("");
-        setAdding(false);
-        submittingRef.current = false;
-      }
-    });
-  };
+  const canAdd = !dndDisabled && !isFailed;
 
   const isDone = lane === "DONE";
   const isRowCollapsed = viewState === "collapsed";
@@ -1177,11 +1256,22 @@ function LaneCell({
           <span className={styles.laneMobileLabel} aria-hidden>
             {LANE_LABELS[lane]} · {cards.length}
           </span>
+          {canAdd ? (
+            <InlineAddForm
+              projectId={projectId}
+              lane={lane}
+              position="top"
+              adding={addingPos === "top"}
+              onAddingChange={(v) => setAddingPos(v ? "top" : null)}
+            />
+          ) : null}
           <SortableContext
             items={cards.map((c) => c.id)}
             strategy={verticalListSortingStrategy}
           >
-            {cards.length === 0 && !adding ? <div className={styles.laneEmpty} aria-hidden /> : null}
+            {cards.length === 0 && addingPos === null ? (
+              <div className={styles.laneEmpty} aria-hidden />
+            ) : null}
             {cards.map((card) => (
               <SortableCardItem
                 key={card.id}
@@ -1195,41 +1285,15 @@ function LaneCell({
             ))}
           </SortableContext>
 
-          {dndDisabled || isFailed ? null : adding ? (
-            <form
-              className={styles.addForm}
-              onSubmit={(e) => {
-                e.preventDefault();
-                submit();
-              }}
-            >
-              <input
-                className={styles.addInput}
-                autoFocus
-                placeholder="Card title"
-                maxLength={200}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setAdding(false);
-                    setTitle("");
-                  }
-                }}
-                onBlur={submit}
-                disabled={isPending}
-              />
-            </form>
-          ) : (
-            <button
-              type="button"
-              className={styles.addBtn}
-              onClick={() => setAdding(true)}
-              disabled={isPending}
-            >
-              <Plus size={12} aria-hidden /> Add card
-            </button>
-          )}
+          {canAdd ? (
+            <InlineAddForm
+              projectId={projectId}
+              lane={lane}
+              position="bottom"
+              adding={addingPos === "bottom"}
+              onAddingChange={(v) => setAddingPos(v ? "bottom" : null)}
+            />
+          ) : null}
         </div>
       )}
     </div>

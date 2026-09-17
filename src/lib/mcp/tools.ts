@@ -119,6 +119,28 @@ function optionalLane(rec: Record<string, unknown>, key: string): Lane | undefin
   return v as Lane;
 }
 
+function optionalInt(rec: Record<string, unknown>, key: string): number | undefined {
+  const v = rec[key];
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "number" || !Number.isInteger(v)) {
+    throw new ValidationError(`${key} must be an integer`);
+  }
+  return v;
+}
+
+function optionalEnum<T extends string>(
+  rec: Record<string, unknown>,
+  key: string,
+  values: readonly T[],
+): T | undefined {
+  const v = rec[key];
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "string" || !values.includes(v as T)) {
+    throw new ValidationError(`${key} must be one of ${values.join(", ")}`);
+  }
+  return v as T;
+}
+
 // undefined = omitted (leave unchanged); null = explicit clear. An object is
 // validated as a recurrence rule; a missing tz defaults to "UTC" so callers
 // that don't know the user's timezone can still create a rule.
@@ -372,7 +394,7 @@ const RECURRENCE_SCHEMA: JsonSchema = {
 
 const createCard: Tool = {
   name: "create_card",
-  description: "Create a card in a project lane (not FAILED — that's reserved for the sweep). Optional body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link). Optionally set a due date and whether it expires (an overdue expiring card moves to the Failed lane within a minute). Optionally set a recurrence rule: when a card with a recurrence enters Done (or Failed), a fresh copy is created in To do with its next due date.",
+  description: "Create a card in a project lane (not FAILED — that's reserved for the sweep). Optional body accepts a GFM-flavored markdown subset (headings, lists, task lists, blockquotes, code blocks, bold/italic/strike/code/link). Optionally set a due date and whether it expires (an overdue expiring card moves to the Failed lane within a minute). Optionally set a recurrence rule: when a card with a recurrence enters Done (or Failed), a fresh copy is created in To do with its next due date. `position` controls where in the lane it lands: \"top\" (default) or \"bottom\".",
   inputSchema: {
     type: "object",
     properties: {
@@ -389,6 +411,11 @@ const createCard: Tool = {
         description: "If true, the card moves to the Failed lane within a minute of its due date passing. Default false.",
       },
       recurrence: RECURRENCE_SCHEMA,
+      position: {
+        type: "string",
+        enum: ["top", "bottom"],
+        description: "Where to insert within the lane. Default \"top\".",
+      },
     },
     required: ["projectId", "lane", "title"],
     additionalProperties: false,
@@ -399,6 +426,7 @@ const createCard: Tool = {
     const dueAt = optionalDate(rec, "dueAt");
     const expires = optionalBool(rec, "expires");
     const recurrence = optionalRecurrenceInput(rec, "recurrence");
+    const position = optionalEnum(rec, "position", ["top", "bottom"] as const);
     return boardM.createCard(ctx.userId, {
       projectId: requireString(rec, "projectId"),
       lane: requireLane(rec, "lane"),
@@ -407,6 +435,7 @@ const createCard: Tool = {
       ...(dueAt !== undefined ? { dueAt } : {}),
       ...(expires !== undefined ? { expires } : {}),
       ...(recurrence !== undefined ? { recurrence } : {}),
+      ...(position !== undefined ? { position } : {}),
     });
   },
 };
@@ -460,23 +489,28 @@ const updateCard: Tool = {
 
 const moveCard: Tool = {
   name: "move_card",
-  description: "Move a card to a (possibly different) lane at the given index. Idempotent. Rejects moving into or out of the Failed lane (use rescue_card to recover a failed card).",
+  description: "Move a card to a (possibly different) lane at the given index. Omit toIndex to place at the top. Idempotent. Rejects moving into or out of the Failed lane (use rescue_card to recover a failed card).",
   inputSchema: {
     type: "object",
     properties: {
       cardId: { type: "string" },
       toLane: { type: "string", enum: LANE_VALUES },
-      toIndex: { type: "integer", minimum: 0 },
+      toIndex: {
+        type: "integer",
+        minimum: 0,
+        description: "Target index within the lane. Omit to place at the top.",
+      },
     },
-    required: ["cardId", "toLane", "toIndex"],
+    required: ["cardId", "toLane"],
     additionalProperties: false,
   },
   handler: async (ctx, args) => {
     const rec = asRecord(args);
+    const toIndex = optionalInt(rec, "toIndex");
     await boardM.moveCard(ctx.userId, {
       cardId: requireString(rec, "cardId"),
       toLane: requireLane(rec, "toLane"),
-      toIndex: requireInt(rec, "toIndex"),
+      ...(toIndex !== undefined ? { toIndex } : {}),
     });
     return { moved: true };
   },

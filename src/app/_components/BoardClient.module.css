@@ -373,6 +373,13 @@
   border-radius: 4px;
 }
 
+/* The top strip (18px) plus the flex gap (6px) it introduces already equal
+   laneEmpty's usual min-height, so drop that min-height when the strip is
+   present — an idle empty lane keeps the same total height as before. */
+.addTopStrip + .laneEmpty {
+  min-height: 0;
+}
+
 .card {
   display: flex;
   flex-direction: column;
@@ -646,6 +653,39 @@
 }
 
 .addBtn:hover {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--bg);
+}
+
+/* Slim hover strip above a lane's card list — reserves its height at all
+   times (so hovering doesn't shift layout) but stays invisible until the
+   lane is hovered/focused. */
+.addTopStrip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 18px;
+  padding: 0;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px dashed transparent;
+  border-radius: 4px;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.laneInner:hover .addTopStrip,
+.addTopStrip:focus-visible {
+  opacity: 1;
+}
+
+.addTopStrip:hover {
   color: var(--text);
   border-color: var(--border);
   background: var(--bg);

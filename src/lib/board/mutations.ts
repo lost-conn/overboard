@@ -73,6 +73,22 @@ async function maxOrderInLane(
   return (max?.order ?? -1) + 1;
 }
 
+// Shared "min order in lane" lookup used by every mutation that places a
+// card at the top of a lane. Negative orders are fine — everything sorts by
+// `order asc`, so no renumbering is needed.
+async function minOrderInLane(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  lane: Lane,
+): Promise<number> {
+  const min = await tx.card.findFirst({
+    where: { projectId, lane },
+    orderBy: { order: "asc" },
+    select: { order: true },
+  });
+  return (min?.order ?? 1) - 1;
+}
+
 type SpawnableCard = {
   id: string;
   projectId: string;
@@ -113,7 +129,7 @@ async function spawnNextOccurrence(
   }
 
   const due = nextDueAt(rule, card.dueAt, now);
-  const order = await maxOrderInLane(tx, card.projectId, Lane.TODO);
+  const order = await minOrderInLane(tx, card.projectId, Lane.TODO);
 
   const clone = await tx.card.create({
     data: {
@@ -237,6 +253,7 @@ export async function createCard(
     dueAt?: Date | null;
     expires?: boolean;
     recurrence?: RecurrenceRule | string | null;
+    position?: "top" | "bottom";
   },
 ): Promise<Card> {
   const lane = parseLane(args.lane);
@@ -247,9 +264,16 @@ export async function createCard(
   const dueAt = validateDueAt(args.dueAt);
   const expires = validateExpires(args.expires);
   const recurrence = validateRecurrence(args.recurrence);
+  const position = args.position ?? "top";
+  if (position !== "top" && position !== "bottom") {
+    throw new ValidationError('position must be "top" or "bottom"');
+  }
   await requireProjectAccess(userId, args.projectId);
 
-  const order = await maxOrderInLane(db, args.projectId, lane);
+  const order =
+    position === "bottom"
+      ? await maxOrderInLane(db, args.projectId, lane)
+      : await minOrderInLane(db, args.projectId, lane);
 
   const card = await db.card.create({
     data: {
@@ -312,10 +336,12 @@ export async function deleteCard(userId: string, cardId: string): Promise<void> 
 
 export async function moveCard(
   userId: string,
-  args: { cardId: string; toLane: Lane | string; toIndex: number },
+  args: { cardId: string; toLane: Lane | string; toIndex?: number },
 ): Promise<void> {
   const toLane = parseLane(args.toLane);
-  if (!Number.isInteger(args.toIndex) || args.toIndex < 0) {
+  // Omitted toIndex means "place at the top" (index 0).
+  const toIndex = args.toIndex ?? 0;
+  if (!Number.isInteger(toIndex) || toIndex < 0) {
     throw new ValidationError("toIndex must be a non-negative integer");
   }
 
@@ -364,7 +390,7 @@ export async function moveCard(
 
     if (sameLane) {
       const finalOrder = [...source];
-      const clamped = Math.min(args.toIndex, finalOrder.length);
+      const clamped = Math.min(toIndex, finalOrder.length);
       finalOrder.splice(clamped, 0, { id: card.id });
       for (let i = 0; i < finalOrder.length; i++) {
         if (finalOrder[i].id === card.id) {
@@ -389,7 +415,7 @@ export async function moveCard(
       select: { id: true },
     });
     const finalTarget = [...target];
-    const clamped = Math.min(args.toIndex, finalTarget.length);
+    const clamped = Math.min(toIndex, finalTarget.length);
     finalTarget.splice(clamped, 0, { id: card.id });
     for (let i = 0; i < finalTarget.length; i++) {
       if (finalTarget[i].id === card.id) {
@@ -445,7 +471,11 @@ export async function sweepDueCards(now: Date = new Date()): Promise<string[]> {
 
   await db.$transaction(async (tx) => {
     for (const [projectId, cards] of byProject) {
-      let order = await maxOrderInLane(tx, projectId, Lane.FAILED);
+      // Compute the top slot once, then assign the whole batch a contiguous
+      // block of orders ending at that slot, so cards keep their relative
+      // order (the first candidate ends up highest, i.e. topmost).
+      const topSlot = await minOrderInLane(tx, projectId, Lane.FAILED);
+      let order = topSlot - cards.length + 1;
       for (const c of cards) {
         await tx.card.update({
           where: { id: c.id },
@@ -478,7 +508,7 @@ export async function rescueCard(userId: string, cardId: string): Promise<void> 
 
   const now = new Date();
   await db.$transaction(async (tx) => {
-    const order = await maxOrderInLane(tx, card.projectId, Lane.DONE);
+    const order = await minOrderInLane(tx, card.projectId, Lane.DONE);
     await tx.card.update({
       where: { id: card.id },
       // No spawn here: the next occurrence was already created when this

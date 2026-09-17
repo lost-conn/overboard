@@ -35,6 +35,7 @@ export async function createCardAction(formData: FormData): Promise<void> {
   try {
     const dueAtRaw = formData.get("dueAt");
     const expiresRaw = formData.get("expires");
+    const positionRaw = formData.get("position");
     await core.createCard(userId, {
       projectId: String(formData.get("projectId") ?? ""),
       lane: String(formData.get("lane") ?? ""),
@@ -43,6 +44,7 @@ export async function createCardAction(formData: FormData): Promise<void> {
         ? { dueAt: new Date(dueAtRaw) }
         : {}),
       ...(typeof expiresRaw === "string" ? { expires: expiresRaw === "true" } : {}),
+      ...(positionRaw === "top" || positionRaw === "bottom" ? { position: positionRaw } : {}),
     });
   } catch (err) {
     swallowUserErrors(err);
