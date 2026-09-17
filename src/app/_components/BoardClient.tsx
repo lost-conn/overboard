@@ -25,7 +25,22 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, Plus, Rows3, Rows4, Share2, X } from "lucide-react";
+import {
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Clock,
+  MoreHorizontal,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Rows3,
+  Rows4,
+  Share2,
+  X,
+} from "lucide-react";
+import * as Popover from "@radix-ui/react-popover";
 import {
   createCardAction,
   deleteCardAction,
@@ -884,6 +899,10 @@ function ProjectRow({
     });
   };
 
+  // Lifted out of SchedulePicker so the touch overflow menu can open it,
+  // rather than nesting a popover inside a popover.
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+
   const [renamingName, setRenamingName] = useState<string | null>(null);
   const commitRename = () => {
     if (renamingName === null) return;
@@ -951,6 +970,8 @@ function ProjectRow({
         value={{ omnipresent: project.omnipresent, classIds: project.classIds }}
         classes={classes}
         onChange={(next) => onScheduleChange(project.id, next)}
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
       />
       {!active ? <span className={styles.projectInactiveBadge}>inactive</span> : null}
       {!isRowCollapsed && <span className={styles.projectCount}>{cardCount}</span>}
@@ -969,18 +990,23 @@ function ProjectRow({
     </button>
   ) : null;
 
+  const togglePin =
+    !project.isOwner && project.pinnedToBoard !== undefined
+      ? () => {
+          startTransition(async () => {
+            await setPinnedToBoardAction({
+              projectId: project.id,
+              pinned: !project.pinnedToBoard,
+            });
+          });
+        }
+      : undefined;
+
   const pinBtnEl = !project.isOwner && project.pinnedToBoard !== undefined ? (
     <button
       type="button"
       className={`${styles.pinBtn} ${project.pinnedToBoard ? styles.pinBtnActive : ""}`}
-      onClick={() => {
-        startTransition(async () => {
-          await setPinnedToBoardAction({
-            projectId: project.id,
-            pinned: !project.pinnedToBoard,
-          });
-        });
-      }}
+      onClick={() => togglePin?.()}
       disabled={isPending}
       title={project.pinnedToBoard ? "Unpin from board" : "Pin to board"}
       aria-label={project.pinnedToBoard ? `Unpin ${project.name} from board` : `Pin ${project.name} to board`}
@@ -1007,6 +1033,23 @@ function ProjectRow({
       <span className={styles.ownerBadge}>{project.ownerEmail}</span>
     ) : null;
 
+  // Rendered at every width but only displayed on coarse pointers (see the
+  // `@media (hover: hover) and (pointer: fine)` rule) — keeping it in the DOM
+  // means no layout-dependent JS and no hydration branch.
+  const rowMenuEl = (
+    <RowMenu
+      projectName={project.name}
+      canRename={project.isOwner}
+      onRename={project.isOwner ? () => setRenamingName(project.name) : undefined}
+      onShare={onShareClick}
+      onSchedule={() => setScheduleOpen(true)}
+      pinned={project.pinnedToBoard}
+      onTogglePin={togglePin}
+      onDelete={project.isOwner ? handleDeleteProject : undefined}
+      disabled={isPending}
+    />
+  );
+
   return (
     <>
       {isRowCollapsed ? (
@@ -1021,6 +1064,7 @@ function ProjectRow({
           {shareBtnEl}
           {pinBtnEl}
           {deleteBtnEl}
+          {rowMenuEl}
         </div>
       ) : (
         <div
@@ -1031,6 +1075,7 @@ function ProjectRow({
             {ownerBadgeEl}
             {shareBtnEl}
             {deleteBtnEl}
+            {rowMenuEl}
           </div>
           <div className={`${styles.projectLine2} ${!active ? styles.projectRowInactive : ""}`}>
             {scheduleEl}
@@ -1059,6 +1104,90 @@ function ProjectRow({
         />
       ))}
     </>
+  );
+}
+
+// Phones have no hover, so the row's icon buttons are either permanently
+// invisible there or permanently visible everywhere — and at 20x20 they were
+// well under the 44px minimum tap target anyway. On coarse pointers they
+// collapse into this one menu, which also exposes Rename: on desktop that is
+// a double-click on the project name, which touch has no equivalent for.
+function RowMenu({
+  projectName,
+  canRename,
+  onRename,
+  onShare,
+  onSchedule,
+  pinned,
+  onTogglePin,
+  onDelete,
+  disabled,
+}: {
+  projectName: string;
+  canRename: boolean;
+  onRename?: () => void;
+  onShare?: () => void;
+  onSchedule: () => void;
+  pinned?: boolean;
+  onTogglePin?: () => void;
+  onDelete?: () => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const run = (fn?: () => void) => () => {
+    setOpen(false);
+    fn?.();
+  };
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          className={styles.rowMenuBtn}
+          aria-label={`More actions for ${projectName}`}
+          title="More actions"
+          disabled={disabled}
+        >
+          <MoreHorizontal size={18} aria-hidden />
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content className={styles.rowMenu} align="end" sideOffset={4}>
+          {canRename && onRename ? (
+            <button type="button" className={styles.rowMenuItem} onClick={run(onRename)}>
+              <Pencil size={15} aria-hidden /> Rename
+            </button>
+          ) : null}
+          <button type="button" className={styles.rowMenuItem} onClick={run(onSchedule)}>
+            <Clock size={15} aria-hidden /> Schedule…
+          </button>
+          {onShare ? (
+            <button type="button" className={styles.rowMenuItem} onClick={run(onShare)}>
+              <Share2 size={15} aria-hidden /> Share
+            </button>
+          ) : null}
+          {onTogglePin ? (
+            <button type="button" className={styles.rowMenuItem} onClick={run(onTogglePin)}>
+              {pinned ? <PinOff size={15} aria-hidden /> : <Pin size={15} aria-hidden />}
+              {pinned ? "Unpin from board" : "Pin to board"}
+            </button>
+          ) : null}
+          {onDelete ? (
+            <>
+              <div className={styles.rowMenuDivider} />
+              <button
+                type="button"
+                className={`${styles.rowMenuItem} ${styles.rowMenuItemDanger}`}
+                onClick={run(onDelete)}
+              >
+                <X size={15} aria-hidden /> Delete project
+              </button>
+            </>
+          ) : null}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 

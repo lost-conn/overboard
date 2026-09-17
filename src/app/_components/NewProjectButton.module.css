@@ -34,3 +34,17 @@
   outline: none;
   min-width: 220px;
 }
+
+/* Coarse pointers: the label keeps its size, the hit area grows to 44px. */
+@media (hover: none), (pointer: coarse) {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

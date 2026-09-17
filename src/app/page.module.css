@@ -136,3 +136,24 @@
     gap: 8px;
   }
 }
+
+/* The header nav is the other thing you tap on a phone, and it shipped at
+   32px. Coarse pointers only: the labels keep their size, the hit areas grow. */
+@media (hover: none), (pointer: coarse) {
+  .navLink,
+  .iconBtn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .navLink {
+    padding: 0 var(--s-1);
+  }
+}
+
+.navLink:focus-visible,
+.iconBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

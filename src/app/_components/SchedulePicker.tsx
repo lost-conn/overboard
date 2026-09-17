@@ -14,6 +14,11 @@ type Props = {
   value: ScheduleValue;
   classes: SchedulePickerClass[];
   onChange: (next: ScheduleValue) => void;
+  // Optionally controlled, so the touch overflow menu can open this picker
+  // from its own "Schedule…" item instead of nesting one popover in another.
+  // Omitted, it keeps its own state exactly as before.
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 function pickerLabel(value: ScheduleValue, classes: SchedulePickerClass[]): string {
@@ -24,8 +29,17 @@ function pickerLabel(value: ScheduleValue, classes: SchedulePickerClass[]): stri
   return value.classIds.length > 1 ? `${firstName} +${value.classIds.length - 1}` : firstName;
 }
 
-export function SchedulePicker({ projectName, value, classes, onChange }: Props) {
-  const [open, setOpen] = useState(false);
+export function SchedulePicker({
+  projectName,
+  value,
+  classes,
+  onChange,
+  open: controlledOpen,
+  onOpenChange,
+}: Props) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
 
   const setOmnipresent = (checked: boolean) => {
     onChange({ omnipresent: checked, classIds: checked ? [] : value.classIds });
