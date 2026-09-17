@@ -96,10 +96,14 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  /* Mixing the ramp colour toward --text rather than using it raw is what
+     makes one set of scheme-independent hues legible in both schemes: in
+     light mode --text is near-black so the label darkens, in dark mode it is
+     near-white so the label lightens. The hue survives either way. */
+  color: color-mix(in srgb, var(--lane-c, var(--text-dim)) 50%, var(--text));
   background: var(--bg);
   border: 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid color-mix(in srgb, var(--lane-c, var(--border)) 75%, transparent);
   text-align: left;
   cursor: pointer;
   transition: color 0.15s, background 0.15s;
@@ -108,7 +112,7 @@
 }
 
 .laneHeader:hover {
-  color: var(--text);
+  color: color-mix(in srgb, var(--lane-c, var(--text-dim)) 30%, var(--text));
 }
 
 .laneHeaderCollapsed {
@@ -344,10 +348,23 @@
   background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
+/* A 5% wash of the lane's ramp colour over the lane surface, plus the heat
+   term on top of it. Folding heat in here rather than keeping separate
+   Done/Failed background rules means every lane shares one formula: the hue
+   is the lane's own, and heat only raises its intensity.
+
+   At --heat 0 the heat term collapses to 0%, leaving exactly the 5% wash —
+   so an un-hot lane is pixel-identical to a plain lane of its colour, with
+   no separate "no heat" rule needed. */
 .laneCell {
   position: relative;
-  background: var(--elev-1);
-  border: 1px solid var(--border);
+  --lane-wash: color-mix(in srgb, var(--lane-c, var(--elev-1)) 5%, var(--elev-1));
+  background: color-mix(
+    in srgb,
+    var(--lane-c, var(--elev-1)) calc(5% + var(--heat, 0) * 10%),
+    var(--elev-1)
+  );
+  border: 1px solid color-mix(in srgb, var(--lane-c, var(--border)) calc(var(--heat, 0) * 40%), var(--border));
   border-radius: var(--radius);
   min-height: 80px;
   transition: background 0.15s, border-color 0.15s;
@@ -384,28 +401,22 @@
      grid row is shaped by them. No extra constraint needed here. */
 }
 
-/* Failed/Done lanes: tint scales with activity via a --heat custom property
-   (0..1) set inline per-project in LaneCell. At heat 0 the color-mix
-   percentage collapses to 0%, so the cell is pixel-identical to a neutral
-   .laneCell — no separate "no heat" rule needed. */
-.laneCellFailed {
-  background: color-mix(in srgb, var(--danger) calc(var(--heat, 0) * 10%), var(--elev-1));
-  border-color: color-mix(in srgb, var(--danger) calc(var(--heat, 0) * 40%), var(--border));
-  transition: background 0.3s, border-color 0.3s;
-}
-
+/* Heat (a 0..1 custom property set inline per project row in LaneCell) is
+   mixed by the shared .laneCell rule above. These two only slow the tint
+   down: activity changes should ease rather than snap, where a drag-over
+   highlight should be immediate. */
+.laneCellFailed,
 .laneCellDone {
-  background: color-mix(in srgb, var(--success) calc(var(--heat, 0) * 10%), var(--elev-1));
-  border-color: color-mix(in srgb, var(--success) calc(var(--heat, 0) * 40%), var(--border));
   transition: background 0.3s, border-color 0.3s;
 }
 
 /* Declared after the heat-tint rules (same specificity as each) so an
    active drag-over always wins the background/border, regardless of a
-   Done/Failed lane's current tint. */
+   lane's current tint. Uses the lane's own ramp colour rather than the
+   generic teal accent — the ramp already says which lane this is. */
 .laneCellOver {
-  background: color-mix(in srgb, var(--accent) 8%, var(--elev-2));
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--lane-c, var(--accent)) 10%, var(--elev-2));
+  border-color: color-mix(in srgb, var(--lane-c, var(--accent)) 45%, var(--border));
 }
 
 /* Project row collapsed: lane cells shrink to a transparent strip and hide
@@ -419,7 +430,7 @@
 /* Lane column collapsed via header click: hide cards across all rows, keep a
    thin strip so the column is still visually present. */
 .laneCellColCollapsed {
-  background: color-mix(in srgb, var(--elev-2) 40%, var(--elev-1));
+  background: color-mix(in srgb, var(--lane-c, var(--elev-2)) 8%, color-mix(in srgb, var(--elev-2) 40%, var(--elev-1)));
 }
 
 .laneCellCollapsedCount {
@@ -430,11 +441,9 @@
   justify-content: center;
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-dim);
-}
-
-.laneCellCollapsedCountFailed {
-  color: var(--danger);
+  /* A collapsed column is a 44px strip with nothing but this number in it.
+     Carrying the ramp here is the only thing telling you which lane it is. */
+  color: color-mix(in srgb, var(--lane-c, var(--text-dim)) 50%, var(--text));
 }
 
 .laneEmpty {
@@ -456,7 +465,11 @@
   flex-direction: column;
   align-items: stretch;
   gap: 5px;
-  padding: 8px 10px;
+  /* 2px of the lane's ramp colour on the leading edge. padding-left drops to
+     8px so the border doesn't shift the content. Restrained on purpose: this
+     is orientation, not decoration — you should be able to tell which column
+     a card came from at a glance without it drawing the eye. */
+  padding: 8px 10px 8px 8px;
   font-size: 13px;
   line-height: 1.35;
   color: var(--text);
@@ -466,6 +479,8 @@
      rather than an object on it. */
   background: var(--elev-2);
   border: 1px solid var(--border);
+  /* After the `border` shorthand, or it gets reset by it. */
+  border-left: 2px solid var(--lane-c, var(--border));
   border-radius: 5px;
   box-shadow: var(--shadow-card);
   cursor: pointer;
@@ -660,9 +675,14 @@
   opacity: 0.5;
 }
 
+/* Deliberately leaves border-left alone: the leading edge belongs to whoever
+   owns it — the lane ramp normally, a due tier when one applies — and
+   .card:hover outranks the due-tier rules on specificity. */
 .card:hover {
   background: var(--elev-3);
-  border-color: var(--text-dim);
+  border-top-color: var(--text-dim);
+  border-right-color: var(--text-dim);
+  border-bottom-color: var(--text-dim);
   box-shadow: var(--shadow-card-hover);
 }
 
@@ -681,7 +701,10 @@
   width: 6px;
   height: 6px;
   margin-top: 5px;
-  background: var(--accent);
+  /* "This card has a body" — nothing to do with lanes or with primary
+     actions. It was one of the dozen jobs teal was doing; now that the ramp
+     carries lane meaning, this goes back to being quiet chrome. */
+  background: var(--text-dim);
   border-radius: 50%;
   opacity: 0.7;
 }
@@ -909,9 +932,10 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--text-dim);
-    background: var(--surface);
+    color: color-mix(in srgb, var(--lane-c, var(--text-dim)) 50%, var(--text));
+    background: var(--elev-2);
     border: 1px solid var(--border);
+    border-left: 2px solid var(--lane-c, var(--border));
     border-radius: 3px;
   }
 
@@ -954,6 +978,8 @@
     padding: 10px 12px 0;
   }
 
+  /* The lane bar is how you switch lanes on a phone, where the desktop
+     header row is hidden entirely — so it has to carry the ramp too. */
   .mobileLaneBtn {
     flex: 1;
     padding: 6px 4px;
@@ -962,9 +988,10 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--text);
-    background: var(--surface);
+    color: color-mix(in srgb, var(--lane-c, var(--text)) 50%, var(--text));
+    background: color-mix(in srgb, var(--lane-c, var(--elev-2)) 8%, var(--elev-2));
     border: 1px solid var(--border);
+    border-bottom: 2px solid color-mix(in srgb, var(--lane-c, var(--border)) 75%, transparent);
     border-radius: 4px;
     cursor: pointer;
     transition: color 0.15s, background 0.15s, border-color 0.15s;

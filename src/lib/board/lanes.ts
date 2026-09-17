@@ -15,6 +15,17 @@ export const LANE_LABELS: Record<LaneKey, string> = {
   FAILED: "Failed",
 };
 
+// Each lane's position on the Backlog -> To do -> Doing -> Done ramp, as the
+// custom property the stylesheet reads. Kept next to the lane enum so the two
+// can't drift: adding a lane without a ramp colour is a type error.
+export const LANE_RAMP: Record<LaneKey, string> = {
+  BACKLOG: "var(--lane-backlog)",
+  TODO: "var(--lane-todo)",
+  DOING: "var(--lane-doing)",
+  DONE: "var(--lane-done)",
+  FAILED: "var(--lane-failed)",
+};
+
 // Which lanes a board that has never expressed a preference starts collapsed.
 //
 // Done used to be in here, which meant a fresh account shipped the one lane

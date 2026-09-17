@@ -55,9 +55,22 @@ import {
   DEFAULT_COLLAPSED_LANES,
   LANES,
   LANE_LABELS,
+  LANE_RAMP,
   resolveCollapsedLanes,
   type LaneKey,
 } from "@/lib/board/lanes";
+
+// The ramp reaches the stylesheet as a single inherited custom property, so
+// every descendant (header text and underline, card leading edge, drop
+// target, collapsed-column count) reads one value and nothing has to know
+// the lane it is in.
+type LaneVars = CSSProperties & Record<string, string | number>;
+
+function laneVars(lane: LaneKey, heat?: number): LaneVars {
+  const vars: LaneVars = { "--lane-c": LANE_RAMP[lane] };
+  if (heat !== undefined) vars["--heat"] = heat;
+  return vars;
+}
 import { describeDue, type DueTier } from "@/lib/board/due";
 import { describeRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
 import {
@@ -621,6 +634,7 @@ export function BoardClient({
               key={lane}
               type="button"
               className={`${styles.mobileLaneBtn} ${isCollapsed ? styles.mobileLaneBtnCollapsed : ""}`}
+              style={laneVars(lane)}
               onClick={() => toggleLaneCollapsed(lane)}
               aria-pressed={isCollapsed}
             >
@@ -680,6 +694,7 @@ export function BoardClient({
                   key={lane}
                   type="button"
                   className={`${styles.laneHeader} ${isCollapsed ? styles.laneHeaderCollapsed : ""}`}
+                  style={laneVars(lane)}
                   onClick={() => toggleLaneCollapsed(lane)}
                   aria-pressed={isCollapsed}
                   title={
@@ -1223,13 +1238,8 @@ function LaneCell({
     .filter(Boolean)
     .join(" ");
 
-  const heatStyle =
-    heat !== undefined
-      ? ({ "--heat": heat } as CSSProperties & Record<string, string | number>)
-      : undefined;
-
   return (
-    <div ref={droppable.setNodeRef} className={cellClass} style={heatStyle}>
+    <div ref={droppable.setNodeRef} className={cellClass} style={laneVars(lane, heat)}>
       {!isRowCollapsed && isLaneCollapsed && cards.length > 0 ? (
         <span
           className={`${styles.laneCellCollapsedCount} ${

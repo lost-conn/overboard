@@ -77,6 +77,21 @@
   /* One canonical stack. There were two, differing only in whether they
      spelled it SFMono-Regular or "SF Mono"; this is their union. */
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* --- Lane ramp --------------------------------------------------------
+     Cool -> warm -> resolved, along the board's actual semantic axis.
+     Nothing is urgent in Backlog; Doing is the warmest point; Done cools
+     into the brand teal, which is the first time teal means anything in
+     particular. Failed sits off the ramp entirely.
+
+     Deliberately scheme-independent: these are identities, not surfaces.
+     Contrast is handled where they are used — header text mixes toward
+     --text, and the lane wash is only 5% against the ground. */
+  --lane-backlog: #7c8b94;
+  --lane-todo: #5e97d8;
+  --lane-doing: #e4a44c;
+  --lane-done: #2dd4bf;
+  --lane-failed: #e06a75;
 }
 
 @media (prefers-color-scheme: dark) {
