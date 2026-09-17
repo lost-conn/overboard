@@ -154,6 +154,125 @@ export async function getConceptDecomposition(
   };
 }
 
+/* ---- pool-wide ----------------------------------------------------------- */
+
+export type PoolChip = {
+  id: string;
+  name: string;
+  description: string | null;
+};
+
+export type PoolAxisRow = {
+  axisId: string;
+  name: string;
+  color: string;
+  /** Empty means a declared gap, exactly as on the concept board. */
+  components: PoolChip[];
+};
+
+export type PoolConcept = {
+  id: string;
+  title: string;
+  order: number;
+  createdAt: string;
+  tags: { id: string; name: string; color: string }[];
+  axes: PoolAxisRow[];
+  /** Flat set of component ids, for highlight and overlap maths on the client. */
+  componentIds: string[];
+  componentCount: number;
+  gapCount: number;
+};
+
+/**
+ * Every concept with its full decomposition, in three queries regardless of
+ * pool size. Assembled in JS rather than via nested includes so the cost stays
+ * linear in rows rather than in concepts.
+ */
+export async function getPoolDecomposition(userId: string): Promise<PoolConcept[]> {
+  const [ideas, declaredAxes, attachments] = await Promise.all([
+    db.idea.findMany({
+      where: { userId },
+      orderBy: { order: "asc" },
+      select: {
+        id: true,
+        title: true,
+        order: true,
+        createdAt: true,
+        tags: { select: { tag: { select: { id: true, name: true, color: true } } } },
+      },
+    }),
+    db.conceptAxis.findMany({
+      where: { idea: { userId }, axis: { userId } },
+      orderBy: { order: "asc" },
+      select: {
+        ideaId: true,
+        axis: { select: { id: true, name: true, color: true } },
+      },
+    }),
+    db.conceptComponent.findMany({
+      where: { idea: { userId }, component: { userId } },
+      orderBy: { order: "asc" },
+      select: {
+        ideaId: true,
+        component: {
+          select: { id: true, name: true, description: true, axisId: true },
+        },
+      },
+    }),
+  ]);
+
+  const chipsByIdeaAxis = new Map<string, PoolChip[]>();
+  const componentsByIdea = new Map<string, string[]>();
+  for (const a of attachments) {
+    const key = `${a.ideaId}::${a.component.axisId}`;
+    const list = chipsByIdeaAxis.get(key) ?? [];
+    list.push({
+      id: a.component.id,
+      name: a.component.name,
+      description: a.component.description,
+    });
+    chipsByIdeaAxis.set(key, list);
+
+    const flat = componentsByIdea.get(a.ideaId) ?? [];
+    flat.push(a.component.id);
+    componentsByIdea.set(a.ideaId, flat);
+  }
+
+  const axesByIdea = new Map<string, PoolAxisRow[]>();
+  for (const d of declaredAxes) {
+    const list = axesByIdea.get(d.ideaId) ?? [];
+    list.push({
+      axisId: d.axis.id,
+      name: d.axis.name,
+      color: axisColor(d.axis.name, d.axis.color),
+      components: chipsByIdeaAxis.get(`${d.ideaId}::${d.axis.id}`) ?? [],
+    });
+    axesByIdea.set(d.ideaId, list);
+  }
+
+  return ideas.map((i) => {
+    const axes = axesByIdea.get(i.id) ?? [];
+    const componentIds = componentsByIdea.get(i.id) ?? [];
+    return {
+      id: i.id,
+      title: i.title,
+      order: i.order,
+      createdAt: i.createdAt.toISOString(),
+      tags: i.tags
+        .map((t) => ({
+          id: t.tag.id,
+          name: t.tag.name,
+          color: t.tag.color ?? deriveTagColor(t.tag.name),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      axes,
+      componentIds,
+      componentCount: componentIds.length,
+      gapCount: axes.filter((a) => a.components.length === 0).length,
+    };
+  });
+}
+
 export type VocabularyEntry = {
   id: string;
   name: string;
