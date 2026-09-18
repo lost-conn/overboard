@@ -1,0 +1,156 @@
+// "These complete each other."
+//
+// Pairs of concepts that share components, ranked. Deliberately not called
+// "similar" or "related": the interesting pairs aren't duplicates, they're an
+// idea plus the pieces it was missing, and the complement is the useful half.
+//
+// Pure functions over a structural shape, so this runs on the client against
+// the pool data already fetched for the grid, and is unit-testable.
+
+export type OverlapConcept = {
+  id: string;
+  title: string;
+  componentIds: string[];
+};
+
+/**
+ * One shared component is noise at any reasonable pool size — two unrelated
+ * games both being "turn-based" says nothing. Two is where a pair starts to
+ * mean something.
+ */
+export const MIN_SHARED = 2;
+
+export type OverlapPair = {
+  a: OverlapConcept;
+  b: OverlapConcept;
+  /** Components both concepts carry. */
+  sharedIds: string[];
+  shared: number;
+  /**
+   * Rarity of the overlap, used only to break ties on `shared`.
+   *
+   * A component shared by exactly this pair scores 1; one used by fifteen
+   * concepts scores 1/14. A rare shared component is a real signal, a
+   * ubiquitous one is just vocabulary — but the primary ranking stays a plain
+   * count, because weighting a count nobody asked to be weighted makes the
+   * results harder to trust, not easier.
+   */
+  rarity: number;
+  /** What A has that B lacks, and vice versa. The actually useful part. */
+  aOnlyIds: string[];
+  bOnlyIds: string[];
+};
+
+function pairKey(x: string, y: string): string {
+  return x < y ? `${x}\u0000${y}` : `${y}\u0000${x}`;
+}
+
+/**
+ * Every pair sharing at least `minShared` components, best first.
+ *
+ * Built from an inverted index — for each component, the concepts using it —
+ * rather than by walking all n^2 pairs. Pairs that share nothing are never
+ * constructed at all, so the cost tracks the number of actual attachments
+ * rather than the square of the pool size.
+ */
+export function findOverlapPairs(
+  concepts: OverlapConcept[],
+  minShared: number = MIN_SHARED,
+): OverlapPair[] {
+  const byId = new Map(concepts.map((c) => [c.id, c]));
+
+  // component id -> concept ids using it
+  const users = new Map<string, string[]>();
+  for (const c of concepts) {
+    for (const componentId of new Set(c.componentIds)) {
+      const list = users.get(componentId) ?? [];
+      list.push(c.id);
+      users.set(componentId, list);
+    }
+  }
+
+  const pairs = new Map<string, { a: string; b: string; shared: string[]; rarity: number }>();
+  for (const [componentId, conceptIds] of users) {
+    if (conceptIds.length < 2) continue;
+    // A component used by k concepts is worth 1/(k-1) to each pair it links.
+    const weight = 1 / (conceptIds.length - 1);
+    for (let i = 0; i < conceptIds.length; i++) {
+      for (let j = i + 1; j < conceptIds.length; j++) {
+        const key = pairKey(conceptIds[i], conceptIds[j]);
+        const entry =
+          pairs.get(key) ??
+          { a: conceptIds[i], b: conceptIds[j], shared: [], rarity: 0 };
+        entry.shared.push(componentId);
+        entry.rarity += weight;
+        pairs.set(key, entry);
+      }
+    }
+  }
+
+  const out: OverlapPair[] = [];
+  for (const entry of pairs.values()) {
+    if (entry.shared.length < minShared) continue;
+    const a = byId.get(entry.a);
+    const b = byId.get(entry.b);
+    if (!a || !b) continue;
+    const sharedSet = new Set(entry.shared);
+    out.push({
+      a,
+      b,
+      sharedIds: entry.shared,
+      shared: entry.shared.length,
+      rarity: entry.rarity,
+      aOnlyIds: [...new Set(a.componentIds)].filter((id) => !sharedSet.has(id)),
+      bOnlyIds: [...new Set(b.componentIds)].filter((id) => !sharedSet.has(id)),
+    });
+  }
+
+  return out.sort(
+    (x, y) =>
+      y.shared - x.shared ||
+      y.rarity - x.rarity ||
+      x.a.title.localeCompare(y.a.title) ||
+      x.b.title.localeCompare(y.b.title),
+  );
+}
+
+export type ConceptOverlap = {
+  /** The other concept in the pair. */
+  other: OverlapConcept;
+  sharedIds: string[];
+  shared: number;
+  /** How many components this concept has in total, for "3 of 4" phrasing. */
+  ownTotal: number;
+  /** What the other concept has that this one doesn't — the complement. */
+  missingIds: string[];
+  rarity: number;
+};
+
+/**
+ * Overlaps for one concept, best first. This is what the concept board shows:
+ * not just the intersection but what the other concept brings that this one is
+ * missing, which is the half that actually suggests what to do next.
+ */
+export function overlapsForConcept(
+  conceptId: string,
+  concepts: OverlapConcept[],
+  minShared: number = MIN_SHARED,
+): ConceptOverlap[] {
+  const self = concepts.find((c) => c.id === conceptId);
+  if (!self) return [];
+  const ownTotal = new Set(self.componentIds).size;
+
+  return findOverlapPairs(concepts, minShared)
+    .filter((p) => p.a.id === conceptId || p.b.id === conceptId)
+    .map((p) => {
+      const isA = p.a.id === conceptId;
+      return {
+        other: isA ? p.b : p.a,
+        sharedIds: p.sharedIds,
+        shared: p.shared,
+        ownTotal,
+        missingIds: isA ? p.bOnlyIds : p.aOnlyIds,
+        rarity: p.rarity,
+      };
+    });
+}

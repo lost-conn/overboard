@@ -265,6 +265,22 @@
   color: var(--text);
 }
 
+/* What the import could not carry. Not an error — it succeeded — but the user
+   has to be told, because the alternative is losing work silently. */
+.warnings {
+  font-size: 13px;
+  padding: 10px 12px 10px 28px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  color: var(--text);
+  margin: 0;
+}
+
+.warnings li + li {
+  margin-top: 6px;
+}
+
 .submit:disabled {
   opacity: 0.5;
   cursor: not-allowed;

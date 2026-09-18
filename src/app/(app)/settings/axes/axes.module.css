@@ -1,0 +1,445 @@
+/* Axis settings. Mirrors the schedule-classes editor's structure, but built on
+   the --s-/--fs-/--t- token layer rather than the literals that file predates.
+   Reduced motion needs no rule here: globals.css collapses --t-* to 1ms. */
+
+.page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--s-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+
+/* ---- list ---------------------------------------------------------- */
+
+.list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.card {
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--s-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+}
+
+/* The axis colour, shown as the thing it actually is: the tint its chips will
+   carry on the concept board. */
+.swatch {
+  flex-shrink: 0;
+  width: var(--s-3);
+  height: var(--s-3);
+  margin-top: var(--s-1);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.cardMain {
+  min-width: 0;
+  flex: 1;
+}
+
+.cardTitleRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.axisName {
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.axisDesc {
+  margin-top: var(--s-1);
+  font-size: var(--fs-body);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.usage {
+  margin-top: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* ---- the vocabulary under each axis ------------------------------------- */
+
+.componentsEmpty {
+  margin-top: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
+.componentList {
+  margin-top: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  list-style: none;
+  padding: 0;
+}
+
+.componentItem {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--radius);
+  background: var(--elev-1);
+}
+
+.componentName {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.componentUsage {
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+}
+
+/* Unused is the one worth noticing: it is the likeliest mistake and the only
+   deletion with no consequences at all. */
+.componentUnused {
+  font-size: var(--fs-label);
+  color: var(--warning);
+}
+
+.componentDelete {
+  padding: var(--s-1) var(--s-2);
+  font: inherit;
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  transition: color var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.componentDelete:hover:not(:disabled),
+.componentDelete:focus-visible {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.componentDelete:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.moveGroup {
+  display: inline-flex;
+  gap: var(--s-1);
+}
+
+.iconBtn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: color var(--t-base) var(--ease), border-color var(--t-base) var(--ease),
+    background var(--t-base) var(--ease);
+}
+
+.iconBtn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-dim);
+  background: var(--elev-1);
+}
+
+.iconBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.smallBtn {
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: color var(--t-base) var(--ease), border-color var(--t-base) var(--ease),
+    background var(--t-base) var(--ease);
+}
+
+.smallBtn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-dim);
+  background: var(--elev-1);
+}
+
+.smallBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.smallBtnDanger:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.newBtn {
+  align-self: flex-start;
+  padding: var(--s-2) var(--s-4);
+  font: inherit;
+  font-weight: 500;
+  font-size: var(--fs-body);
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.newBtn:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+/* ---- empty state ------------------------------------------------------ */
+
+.empty {
+  background: var(--elev-2);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: var(--s-6);
+  text-align: center;
+}
+
+.emptyTitle {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  margin-bottom: var(--s-2);
+}
+
+.emptyBody {
+  font-size: var(--fs-body);
+  color: var(--text-dim);
+  line-height: 1.6;
+  max-width: 460px;
+  margin: 0 auto var(--s-3);
+}
+
+.suggestRow {
+  margin-top: var(--s-4);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  justify-content: center;
+}
+
+.suggestBtn {
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 999px;
+  transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.suggestBtn:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: var(--accent);
+}
+
+/* ---- editor form -------------------------------------------------------- */
+
+.form {
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--s-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.formTitle {
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+
+/* Rename-propagates is a consequence, not a detail — say it at the edit site
+   rather than letting the user discover it on the board. */
+.formNote {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  line-height: 1.5;
+  padding: var(--s-2) var(--s-3);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--warning) 50%, transparent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.fieldLabel {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-dim);
+  margin-bottom: var(--s-2);
+  display: block;
+}
+
+.optional {
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.input {
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-body);
+  color: var(--text);
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  transition: border-color var(--t-base) var(--ease);
+}
+
+.input:focus {
+  border-color: var(--accent);
+}
+
+.colorRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.colorInput {
+  width: 44px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.warnText {
+  margin-top: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--warning);
+}
+
+.errorText {
+  font-size: var(--fs-body);
+  color: var(--danger);
+}
+
+.formActions {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.submit {
+  padding: var(--s-2) var(--s-4);
+  font: inherit;
+  font-weight: 500;
+  font-size: var(--fs-body);
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.cancel {
+  padding: var(--s-2) var(--s-4);
+  font: inherit;
+  font-weight: 500;
+  font-size: var(--fs-body);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: color var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.cancel:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.cancel:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Coarse pointers: labels keep their size, hit areas grow to 44px. Same
+   treatment the app shell already uses. */
+@media (hover: none), (pointer: coarse) {
+  .smallBtn,
+  .suggestBtn,
+  .newBtn,
+  .submit,
+  .cancel,
+  .componentDelete,
+  .iconBtn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .iconBtn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .input,
+  .colorInput {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 560px) {
+  .card {
+    flex-wrap: wrap;
+  }
+
+  .cardActions {
+    width: 100%;
+  }
+}

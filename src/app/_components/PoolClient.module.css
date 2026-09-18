@@ -1,0 +1,869 @@
+/* The idea pool: a workbench grid and a vocabulary browser, one page.
+   Token layer throughout; --t-* collapses to 1ms under prefers-reduced-motion
+   via globals.css, so the dim/lit transitions need no separate rule. */
+
+.wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--s-5) var(--s-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+/* ---- toolbar ------------------------------------------------------------ */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+}
+
+.modeToggle {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.modeBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius) - 1px);
+  transition: color var(--t-base) var(--ease), background var(--t-base) var(--ease);
+}
+
+.modeBtn:hover {
+  color: var(--text);
+}
+
+.modeBtnOn {
+  color: var(--text);
+  background: var(--elev-3);
+  box-shadow: var(--shadow-card);
+}
+
+.searchWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 1 1 200px;
+  min-width: 0;
+  max-width: 340px;
+}
+
+.searchIcon {
+  position: absolute;
+  left: var(--s-2);
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.search {
+  width: 100%;
+  padding: var(--s-2) var(--s-6) var(--s-2) var(--s-6);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  transition: border-color var(--t-base) var(--ease);
+}
+
+.search:focus {
+  border-color: var(--accent);
+}
+
+.searchClear {
+  position: absolute;
+  right: var(--s-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+}
+
+.searchClear:hover {
+  color: var(--text);
+}
+
+.sortWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.sortLabel {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
+.sortSelect {
+  padding: var(--s-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.sortSelect:focus {
+  border-color: var(--accent);
+}
+
+.newBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  transition: background var(--t-base) var(--ease);
+}
+
+.newBtn:hover {
+  background: var(--accent-hover);
+}
+
+.newForm {
+  flex: 1 1 200px;
+  max-width: 300px;
+}
+
+.newInput {
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--elev-1);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.count {
+  margin-left: auto;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- pin bar ------------------------------------------------------------ */
+
+.pinBar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius);
+}
+
+.pinClear {
+  margin-left: auto;
+  padding: var(--s-1) var(--s-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+}
+
+.pinClear:hover {
+  border-color: var(--accent);
+}
+
+/* ---- completes each other ------------------------------------------------ */
+
+.pairsBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: color var(--t-base) var(--ease), border-color var(--t-base) var(--ease),
+    background var(--t-base) var(--ease);
+}
+
+.pairsBtn:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.pairsBtnOn {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.pairsCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--s-1);
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--surface);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.pairsPanel {
+  padding: var(--s-3);
+  background: color-mix(in srgb, var(--accent) 5%, var(--elev-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--radius);
+}
+
+.pairsEmpty {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.pairsList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.pair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.pair:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.pairHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.pairTitle {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.pairTitle:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.pairJoin {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.pairCount {
+  margin-left: auto;
+  font-size: var(--fs-label);
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pairSets {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pairSet {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.pairSetLabel {
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* The complement is the actionable half. */
+.pairSetLabelAdds {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- workbench grid ----------------------------------------------------- */
+
+.grid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--s-3);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  /* The dim/lit pass is the feature: it turns "these two are the same idea"
+     from something you had to already suspect into something you are shown. */
+  transition: opacity var(--t-base) var(--ease), border-color var(--t-base) var(--ease),
+    box-shadow var(--t-base) var(--ease);
+}
+
+.cardLit {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.cardDim {
+  opacity: 0.28;
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+
+.dragHandle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 22px;
+  flex-shrink: 0;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  cursor: grab;
+}
+
+.cardTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: var(--card-lh);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.cardTitle:hover {
+  color: var(--accent);
+}
+
+.cardDelete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  opacity: 0;
+  transition: opacity var(--t-base) var(--ease), color var(--t-base) var(--ease);
+}
+
+.card:hover .cardDelete,
+.cardDelete:focus-visible {
+  opacity: 1;
+}
+
+.cardDelete:hover {
+  color: var(--danger);
+}
+
+.cardTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+.cardUndecomposed {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.cardAxes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.cardAxis {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.cardAxisName {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.cardChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+/* Same amber language as the concept board's declared gap. */
+.cardGap {
+  padding: 2px var(--s-2);
+  font-size: var(--fs-label);
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--warning) 50%, transparent);
+  border-radius: 999px;
+}
+
+.poolChip {
+  padding: 2px var(--s-2);
+  font: inherit;
+  font-size: var(--fs-label);
+  color: var(--text);
+  background: color-mix(in srgb, var(--chip-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chip-color) 35%, transparent);
+  border-radius: 999px;
+  transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.poolChip:hover {
+  border-color: var(--chip-color);
+}
+
+.poolChipOn {
+  background: color-mix(in srgb, var(--chip-color) 30%, transparent);
+  border-color: var(--chip-color);
+  font-weight: 600;
+}
+
+.cardFoot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: auto;
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+}
+
+.cardFootGap {
+  color: var(--warning);
+}
+
+.cardFootScore {
+  color: var(--accent);
+}
+
+/* The one thing in the footer that is an action rather than a readout, so it
+   gets the right edge to itself. */
+.cardPromote {
+  margin-left: auto;
+}
+
+.dragGhost {
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  background: var(--elev-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* ---- vocabulary mode ---------------------------------------------------- */
+
+.vocabLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.vocabLeft,
+.vocabRight {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+
+.vocabHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.matchToggle {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.matchBtn {
+  padding: var(--s-1) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius) - 1px);
+  transition: color var(--t-base) var(--ease), background var(--t-base) var(--ease);
+}
+
+.matchBtnOn {
+  color: var(--surface);
+  background: var(--accent);
+}
+
+.vocabClear {
+  margin-left: auto;
+  padding: var(--s-1) var(--s-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.vocabClear:hover {
+  color: var(--text);
+}
+
+.vocabHint {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.vocabGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.vocabGroupHead {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.vocabItems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+/* The chip plus its up-rung. The promote button keeps its space at all times
+   rather than appearing on hover — chips that reflow under the cursor are
+   miserable to aim at — and only gains contrast once you are on it. */
+.vocabItemWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.vocabPromote {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  opacity: 0.45;
+  transition: opacity var(--t-base) var(--ease), color var(--t-base) var(--ease),
+    border-color var(--t-base) var(--ease);
+}
+
+.vocabItemWrap:hover .vocabPromote,
+.vocabPromote:focus-visible {
+  opacity: 1;
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.vocabItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: color-mix(in srgb, var(--chip-color) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chip-color) 30%, transparent);
+  border-radius: 999px;
+  transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.vocabItem:hover {
+  border-color: var(--chip-color);
+}
+
+.vocabItemOn {
+  background: color-mix(in srgb, var(--chip-color) 32%, transparent);
+  border-color: var(--chip-color);
+  font-weight: 600;
+}
+
+/* Bidirectional echo: a concept focused on the right lights its components
+   here, so you can read a concept's make-up without opening it. */
+.vocabItemEcho {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.vocabItemName {
+  min-width: 0;
+}
+
+.vocabItemCount {
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.vocabRightHead {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.vocabConcepts {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.vocabConcept {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  background: var(--elev-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  transition: border-color var(--t-base) var(--ease), background var(--t-base) var(--ease);
+}
+
+.vocabConceptOn {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.vocabConceptBtn {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--fs-body);
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: none;
+}
+
+.vocabConceptOpen {
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.vocabConceptOpen:hover {
+  text-decoration: underline;
+}
+
+.vocabConceptMeta {
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.vocabEmpty {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* ---- empty / no match --------------------------------------------------- */
+
+.empty {
+  padding: var(--s-7) var(--s-5);
+  text-align: center;
+  background: var(--elev-1);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+.emptyTitle {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  margin-bottom: var(--s-2);
+}
+
+.emptyBody {
+  max-width: 480px;
+  margin: 0 auto;
+  font-size: var(--fs-body);
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.noMatch {
+  padding: var(--s-6);
+  text-align: center;
+  font-size: var(--fs-body);
+  color: var(--text-dim);
+  background: var(--elev-1);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+/* ---- responsive --------------------------------------------------------- */
+
+@media (max-width: 860px) {
+  .vocabLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .wrap {
+    padding: 0 var(--s-3) var(--s-6);
+  }
+
+  /* Single column, as specified — a two-up grid at 375px gives neither card
+     enough width for its chips. */
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .count {
+    margin-left: 0;
+  }
+
+  .searchWrap {
+    max-width: none;
+    flex-basis: 100%;
+  }
+}
+
+/* Coarse pointers: hover does not exist, so the chips are tap-to-pin and every
+   hit area reaches 44px. */
+@media (hover: none), (pointer: coarse) {
+  .modeBtn,
+  .matchBtn,
+  .newBtn,
+  .pairsBtn,
+  .pairTitle,
+  .vocabItem,
+  .vocabClear,
+  .pinClear,
+  .vocabConceptBtn,
+  .vocabConceptOpen,
+  .cardTitle,
+  .sortSelect,
+  .search,
+  .newInput {
+    min-height: 44px;
+  }
+
+  .poolChip,
+  .cardGap {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .searchClear,
+  .cardDelete,
+  .dragHandle,
+  .vocabPromote {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Nothing to hover it into view with. */
+  .vocabPromote {
+    width: 44px;
+    height: 44px;
+    opacity: 1;
+  }
+
+  .cardTitle,
+  .vocabConceptOpen,
+  .pairTitle {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Nothing to hover it into view with. */
+  .cardDelete {
+    opacity: 1;
+  }
+}

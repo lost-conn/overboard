@@ -1,48 +1,37 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
-import { getIdeasForUser } from "@/lib/ideas";
 import { listTags } from "@/lib/tags";
+import { getPoolDecomposition, getVocabulary } from "@/lib/concepts/decomposition";
 import { PageHeader } from "../../_components/AppShell";
-import { IdeasClient, type ClientIdea } from "../../_components/IdeasClient";
+import { PoolClient } from "../../_components/PoolClient";
 import styles from "./ideas.module.css";
 
 export default async function IdeasPage() {
   const user = await currentUser();
   if (!user) redirect("/login");
 
-  const [ideas, allTags] = await Promise.all([
-    getIdeasForUser(user.id),
+  const [concepts, vocabulary, allTags] = await Promise.all([
+    getPoolDecomposition(user.id),
+    getVocabulary(user.id),
     listTags(user.id),
   ]);
-  const clientIdeas: ClientIdea[] = ideas.map((i) => ({
-    id: i.id,
-    title: i.title,
-    contentJson: parseContent(i.contentJson),
-    tags: i.tags,
-  }));
 
-  // Filter bar only shows tags actually in use on ideas; allTags stays full
-  // for the per-idea tag picker.
+  // Filter bar only shows tags actually in use on concepts; the full tag list
+  // stays available wherever tags are edited.
   const usedNames = new Set<string>();
-  for (const i of clientIdeas) for (const t of i.tags) usedNames.add(t.name);
+  for (const c of concepts) for (const t of c.tags) usedNames.add(t.name);
   const filterTags = allTags.filter((t) => usedNames.has(t.name));
 
   return (
     <main className={styles.page}>
       <div className={styles.head}>
-        <PageHeader title="Idea pool" subtitle="Rough notes that aren't projects yet." />
+        <PageHeader
+          title="Idea pool"
+          subtitle="Concepts and the components they're made of. Hover or pin a component to see everything else built from it."
+        />
       </div>
 
-      <IdeasClient ideas={clientIdeas} allTags={allTags} filterTags={filterTags} />
+      <PoolClient concepts={concepts} vocabulary={vocabulary} filterTags={filterTags} />
     </main>
   );
-}
-
-function parseContent(raw: string | null): Record<string, unknown> | null {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
 }

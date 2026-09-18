@@ -4,13 +4,35 @@ import { Lane } from "@/generated/prisma/enums";
 import { ValidationError } from "@/lib/errors";
 import { publish } from "@/lib/events/bus";
 import { parseWindows, serializeWindows, validateTz } from "@/lib/board/schedule";
+import {
+  MAX_AXIS_NAME_LEN,
+  MAX_COMPONENT_NAME_LEN,
+  MAX_DESCRIPTION_LEN,
+  axisNameKey,
+  normalizeAxisName,
+  normalizeComponentName,
+} from "@/lib/concepts/normalize";
 
-// Import counterpart to the backup export in src/app/api/backup/route.ts.
+// Import counterpart to the backup export in src/lib/backup.ts.
 // The backup file is user-scoped data only (projects, cards, ideas, tags,
-// classes). Not covered, by design: ProjectShare (never exported) and card
-// assignees (they reference other users, so we drop them on import).
+// classes, and the component vocabulary). Not covered, by design: ProjectShare
+// (never exported) and card assignees (they reference other users, so we drop
+// them on import).
 
-const SUPPORTED_VERSION = 1;
+// v1: projects, cards, ideas, tags, classes.
+// v2: adds axes, components, each concept's decomposition, and the promotion
+//     ladder links. The ladder fields are additive within v2 (see
+//     BACKUP_VERSION in backup.ts): an older v2 file carries none of them and
+//     restores exactly as it always did.
+//
+// The version is load-bearing on restore, not decoration. Both concept joins
+// cascade off Idea, so a replace restore deletes every axis assignment and
+// component attachment the account had. A v2 backup can put them back; a v1
+// backup has nothing to put back, so it must not be allowed to wipe the
+// vocabulary on its way through. `Backup.hasVocabulary` is what separates
+// "this file predates components" from "this file has an empty vocabulary".
+const SUPPORTED_VERSION = 2;
+const VOCABULARY_VERSION = 2;
 
 // Mirror the limits enforced by the normal create paths so an import can't
 // smuggle in data the rest of the app would reject.
@@ -49,6 +71,9 @@ export type BackupCard = {
 };
 
 export type BackupProject = {
+  // Original project id from the export. Not written on import — kept only to
+  // remap a concept's `projectId` (the promotion link) onto the fresh row.
+  id: string | null;
   name: string;
   priority: number;
   archived: boolean;
@@ -80,6 +105,20 @@ export type BackupIdea = {
   contentMd: string | null;
   createdAt: string | null;
   tags: string[];
+  // Original axis/component ids from the export. Like classIds, these are never
+  // written directly — they are remapped old -> new by name once the whole
+  // vocabulary has been resolved against this user's existing rows.
+  axes: { axisId: string; order: number }[];
+  components: { componentId: string; order: number }[];
+  // The promotion ladder, all three remapped rather than written as-is.
+  // `projectId` points at a project in this same backup; `mirrorComponentId`
+  // at a component in its vocabulary. `demotedAt` is what keeps a concept that
+  // is currently living as a component hidden from the pool — without it the
+  // concept and its mirror component both come back visible, which is one
+  // thing wearing two hats and no way to tell.
+  projectId: string | null;
+  mirrorComponentId: string | null;
+  demotedAt: string | null;
 };
 
 export type BackupTag = {
@@ -87,11 +126,40 @@ export type BackupTag = {
   color: string | null;
 };
 
+export type BackupAxis = {
+  // Original id from the export, kept only to remap references within the same
+  // backup. Resolution is by name, so importing into an account that already
+  // has "Mechanic" merges into it rather than minting a second one.
+  id: string | null;
+  name: string;
+  description: string | null;
+  color: string | null;
+  order: number;
+};
+
+export type BackupComponent = {
+  id: string | null;
+  name: string;
+  description: string | null;
+  contentJson: string | null;
+  // Original axis id from the export, remapped via the axis name.
+  axisId: string | null;
+};
+
 export type Backup = {
   projects: BackupProject[];
   ideas: BackupIdea[];
   tags: BackupTag[];
   classes: BackupClass[];
+  axes: BackupAxis[];
+  components: BackupComponent[];
+  /**
+   * Whether the source file is new enough to carry a component vocabulary at
+   * all. False for pre-v2 backups, and the reason a replace restore from one
+   * leaves the existing vocabulary alone instead of deleting what it cannot
+   * restore.
+   */
+  hasVocabulary: boolean;
 };
 
 export type ImportCounts = {
@@ -100,6 +168,15 @@ export type ImportCounts = {
   ideas: number;
   tags: number;
   classes: number;
+  axes: number;
+  components: number;
+  /** ConceptAxis + ConceptComponent rows recreated. */
+  attachments: number;
+};
+
+export type ImportResult = ImportCounts & {
+  /** Things the import could not carry, in plain words, for the user to read. */
+  warnings: string[];
 };
 
 // --- validation -----------------------------------------------------------
@@ -226,14 +303,57 @@ export function parseBackup(raw: unknown): Backup {
     );
   }
 
+  // Trust the declared version rather than sniffing for an `axes` key: a v1
+  // file and a v2 file of an empty vocabulary look identical otherwise, and
+  // only one of them may wipe the account's vocabulary on replace.
+  const hasVocabulary = version >= VOCABULARY_VERSION;
+
   const rawProjects = raw.projects ?? [];
   const rawIdeas = raw.ideas ?? [];
   const rawTags = raw.tags ?? [];
   const rawClasses = raw.classes ?? [];
+  const rawAxes = raw.axes ?? [];
+  const rawComponents = raw.components ?? [];
   if (!Array.isArray(rawProjects)) throw new ValidationError("projects must be an array");
   if (!Array.isArray(rawIdeas)) throw new ValidationError("ideas must be an array");
   if (!Array.isArray(rawTags)) throw new ValidationError("tags must be an array");
   if (!Array.isArray(rawClasses)) throw new ValidationError("classes must be an array");
+  if (!Array.isArray(rawAxes)) throw new ValidationError("axes must be an array");
+  if (!Array.isArray(rawComponents)) throw new ValidationError("components must be an array");
+
+  const axes: BackupAxis[] = rawAxes.map((a, i) => {
+    if (!isObject(a)) throw new ValidationError(`axes[${i}] must be an object`);
+    const where = `axes[${i}]`;
+    const name = normalizeAxisName(asString(a.name, `${where}.name`, MAX_AXIS_NAME_LEN));
+    if (name.length === 0) throw new ValidationError(`${where}.name is empty after normalizing`);
+    return {
+      id: asStringOrNull(a.id, `${where}.id`),
+      name,
+      description: asStringOrNull(a.description, `${where}.description`),
+      color: asStringOrNull(a.color, `${where}.color`),
+      order: asInt(a.order ?? 0, `${where}.order`),
+    };
+  });
+
+  const components: BackupComponent[] = rawComponents.map((c, i) => {
+    if (!isObject(c)) throw new ValidationError(`components[${i}] must be an object`);
+    const where = `components[${i}]`;
+    const name = normalizeComponentName(
+      asString(c.name, `${where}.name`, MAX_COMPONENT_NAME_LEN),
+    );
+    if (name.length === 0) throw new ValidationError(`${where}.name is empty after normalizing`);
+    const description = asStringOrNull(c.description, `${where}.description`);
+    if (description !== null && description.length > MAX_DESCRIPTION_LEN) {
+      throw new ValidationError(`${where}.description exceeds ${MAX_DESCRIPTION_LEN} chars`);
+    }
+    return {
+      id: asStringOrNull(c.id, `${where}.id`),
+      name,
+      description,
+      contentJson: asStringOrNull(c.contentJson, `${where}.contentJson`),
+      axisId: asStringOrNull(c.axisId, `${where}.axisId`),
+    };
+  });
 
   const tags: BackupTag[] = rawTags.map((t, i) => {
     if (!isObject(t)) throw new ValidationError(`tags[${i}] must be an object`);
@@ -263,6 +383,7 @@ export function parseBackup(raw: unknown): Backup {
     if (!Array.isArray(rawCards)) throw new ValidationError(`projects[${i}].cards must be an array`);
     const { omnipresent, classIds } = parseProjectSchedule(p, `projects[${i}]`);
     return {
+      id: asStringOrNull(p.id, `projects[${i}].id`),
       name: asString(p.name, `projects[${i}].name`, MAX_PROJECT_NAME),
       priority: asInt(p.priority ?? 1, `projects[${i}].priority`),
       archived: p.archived === true,
@@ -306,10 +427,41 @@ export function parseBackup(raw: unknown): Backup {
       contentMd: asStringOrNull(idea.contentMd, `${where}.contentMd`),
       createdAt: asDateOrNull(idea.createdAt, `${where}.createdAt`),
       tags: normalizeTagList(idea.tags ?? [], `${where}.tags`),
+      // Absent on v1 backups (pre components): default to undecomposed.
+      axes: parseRefList(idea.axes, "axisId", `${where}.axes`).map((r) => ({
+        axisId: r.id,
+        order: r.order,
+      })),
+      components: parseRefList(idea.components, "componentId", `${where}.components`).map((r) => ({
+        componentId: r.id,
+        order: r.order,
+      })),
+      // Absent on backups written before the promotion ladder: default to a
+      // plain, never-promoted, never-demoted concept.
+      projectId: asStringOrNull(idea.projectId, `${where}.projectId`),
+      mirrorComponentId: asStringOrNull(idea.mirrorComponentId, `${where}.mirrorComponentId`),
+      demotedAt: asDateOrNull(idea.demotedAt, `${where}.demotedAt`),
     };
   });
 
-  return { projects, ideas, tags, classes };
+  return { projects, ideas, tags, classes, axes, components, hasVocabulary };
+}
+
+/** An `[{ <idField>, order }]` list as exported for a concept's decomposition. */
+function parseRefList(
+  v: unknown,
+  idField: string,
+  field: string,
+): { id: string; order: number }[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v)) throw new ValidationError(`${field} must be an array`);
+  return v.map((entry, i) => {
+    if (!isObject(entry)) throw new ValidationError(`${field}[${i}] must be an object`);
+    return {
+      id: asString(entry[idField], `${field}[${i}].${idField}`, 200),
+      order: asInt(entry.order ?? 0, `${field}[${i}].order`),
+    };
+  });
 }
 
 // --- import ---------------------------------------------------------------
@@ -319,6 +471,8 @@ export function parseBackup(raw: unknown): Backup {
  *  - "merge":   append everything with fresh ids; existing data is untouched.
  *  - "replace": delete the user's projects/ideas/tags first, then import.
  * Tags are matched by name (unique per user); an existing tag keeps its color.
+ * Axes and components are matched by name too, so importing into an account
+ * that already has a vocabulary merges into it rather than duplicating it.
  * Card assignees are dropped (they point at other users, absent from a backup).
  * Runs in a single transaction, so a failure leaves the account unchanged.
  */
@@ -326,8 +480,18 @@ export async function importBackup(
   userId: string,
   backup: Backup,
   mode: ImportMode,
-): Promise<ImportCounts> {
-  const counts: ImportCounts = { projects: 0, cards: 0, ideas: 0, tags: 0, classes: 0 };
+): Promise<ImportResult> {
+  const counts: ImportCounts = {
+    projects: 0,
+    cards: 0,
+    ideas: 0,
+    tags: 0,
+    classes: 0,
+    axes: 0,
+    components: 0,
+    attachments: 0,
+  };
+  const warnings: string[] = [];
 
   await db.$transaction(async (tx) => {
     if (mode === "replace") {
@@ -336,8 +500,36 @@ export async function importBackup(
       // regardless of mode, so a class already in use by this user's shares
       // of other people's projects (untouched by this import) isn't orphaned.
       await tx.project.deleteMany({ where: { userId } });
+
+      if (backup.hasVocabulary) {
+        // Deleting Axis cascades to Component, and both concept joins cascade
+        // off Idea, so this clears the whole decomposition. Safe only because
+        // the backup can put it all back.
+        await tx.axis.deleteMany({ where: { userId } });
+      } else {
+        // A pre-component backup carries no vocabulary, so there is nothing to
+        // restore and wiping would be pure loss. The vocabulary is left
+        // standing — but deleting the ideas below still cascades away every
+        // axis assignment and component attachment, which the backup also
+        // can't refill. Say so rather than letting it happen silently.
+        const [axisCount, componentCount] = await Promise.all([
+          tx.axis.count({ where: { userId } }),
+          tx.component.count({ where: { userId } }),
+        ]);
+        if (axisCount > 0 || componentCount > 0) {
+          warnings.push(
+            `This backup predates the component vocabulary, so it carries no axes or components. ` +
+              `Your ${axisCount} axes and ${componentCount} components were kept, but the restored ` +
+              `concepts come back undecomposed — the backup has no attachments to restore.`,
+          );
+        }
+      }
+
       await tx.idea.deleteMany({ where: { userId } });
       await tx.tag.deleteMany({ where: { userId } });
+    } else if (!backup.hasVocabulary && (backup.axes.length > 0 || backup.components.length > 0)) {
+      // Defensive: parseBackup shouldn't produce this combination.
+      warnings.push("This backup's vocabulary was ignored because its version predates components.");
     }
 
     // Resolve every class name in the backup to an id for this user,
@@ -394,6 +586,98 @@ export async function importBackup(
       if (!existingNames.has(name)) counts.tags += 1;
     }
 
+    // Resolve the component vocabulary the same way classes and tags are
+    // resolved: by name within this user, creating what's missing. Matching on
+    // the backup's raw ids instead would collide with an account that already
+    // has its own vocabulary, and would break entirely on a merge into a
+    // different account.
+    //
+    // Axis names keep their display casing but are unique case-insensitively
+    // (see axisNameKey), so an existing "Mechanic" absorbs a backup's
+    // "mechanic" rather than tripping the unique constraint.
+    const axisIdMap = new Map<string, string>(); // old (backup) axis id -> resolved id
+    const axisIdByKey = new Map<string, string>();
+    if (backup.axes.length > 0) {
+      const existingAxes = await tx.axis.findMany({
+        where: { userId },
+        select: { id: true, name: true },
+      });
+      for (const a of existingAxes) axisIdByKey.set(axisNameKey(a.name), a.id);
+
+      for (const a of backup.axes) {
+        const key = axisNameKey(a.name);
+        let resolvedId = axisIdByKey.get(key);
+        if (!resolvedId) {
+          const created = await tx.axis.create({
+            data: {
+              userId,
+              name: a.name,
+              description: a.description,
+              color: a.color,
+              order: a.order,
+            },
+            select: { id: true },
+          });
+          resolvedId = created.id;
+          axisIdByKey.set(key, resolvedId);
+          counts.axes += 1;
+        }
+        if (a.id) axisIdMap.set(a.id, resolvedId);
+      }
+    }
+
+    // Components are unique by name across the whole vocabulary, not per axis,
+    // so an existing component keeps its current axis and body — same
+    // "existing row wins" rule the tag merge uses.
+    const componentIdMap = new Map<string, string>();
+    const componentIdByName = new Map<string, string>();
+    let droppedComponents = 0;
+    if (backup.components.length > 0) {
+      const existingComponents = await tx.component.findMany({
+        where: { userId },
+        select: { id: true, name: true },
+      });
+      for (const c of existingComponents) componentIdByName.set(c.name, c.id);
+
+      for (const c of backup.components) {
+        let resolvedId = componentIdByName.get(c.name);
+        if (!resolvedId) {
+          // Every component must sit on an axis. If the backup's axis
+          // reference doesn't resolve (a partial or hand-edited export), drop
+          // the component rather than invent an axis for it.
+          const axisId = c.axisId ? axisIdMap.get(c.axisId) : undefined;
+          if (!axisId) {
+            droppedComponents += 1;
+            continue;
+          }
+          const created = await tx.component.create({
+            data: {
+              userId,
+              axisId,
+              name: c.name,
+              description: c.description,
+              contentJson: c.contentJson,
+            },
+            select: { id: true },
+          });
+          resolvedId = created.id;
+          componentIdByName.set(c.name, resolvedId);
+          counts.components += 1;
+        }
+        if (c.id) componentIdMap.set(c.id, resolvedId);
+      }
+    }
+    if (droppedComponents > 0) {
+      warnings.push(
+        `${droppedComponents} components were skipped because the axis they referenced ` +
+          `was not in the backup.`,
+      );
+    }
+
+    // old (backup) project id -> new id, so a concept's promotion link can
+    // point at the project it actually became rather than at a stale id.
+    const projectIdMap = new Map<string, string>();
+
     for (const p of backup.projects) {
       // Remap each classId old -> new via the class-name resolution above.
       // A referenced class not in this backup (e.g. a partial/edited
@@ -414,6 +698,7 @@ export async function importBackup(
         select: { id: true },
       });
       counts.projects += 1;
+      if (p.id) projectIdMap.set(p.id, project.id);
 
       if (remappedClassIds.length > 0) {
         await tx.projectClassLink.createMany({
@@ -468,7 +753,44 @@ export async function importBackup(
       }
     }
 
+    // Idea.projectId and Idea.mirrorComponentId are both @unique — one concept
+    // per project, one concept per component twin. On a merge the target
+    // account may already have a concept mirroring a component this backup also
+    // claims (components are merged by name, so it is the *same* row), and a
+    // hand-edited file could name the same target twice. Either would abort the
+    // whole transaction on a constraint violation, so claims are tracked and a
+    // second claimant simply comes back unlinked rather than not at all.
+    const claimedMirrors = new Set<string>();
+    const claimedProjects = new Set<string>();
+    const existingMirrors = await tx.idea.findMany({
+      where: { userId, mirrorComponentId: { not: null } },
+      select: { mirrorComponentId: true },
+    });
+    for (const m of existingMirrors) {
+      if (m.mirrorComponentId) claimedMirrors.add(m.mirrorComponentId);
+    }
+    let unlinkedMirrors = 0;
+
     for (const idea of backup.ideas) {
+      // The ladder links, remapped onto this import's fresh rows. Unresolvable
+      // references are dropped rather than pointed at nothing, same as classIds.
+      let projectId = idea.projectId ? (projectIdMap.get(idea.projectId) ?? null) : null;
+      if (projectId && claimedProjects.has(projectId)) projectId = null;
+
+      let mirrorComponentId = idea.mirrorComponentId
+        ? (componentIdMap.get(idea.mirrorComponentId) ?? null)
+        : null;
+      if (mirrorComponentId && claimedMirrors.has(mirrorComponentId)) {
+        mirrorComponentId = null;
+        unlinkedMirrors += 1;
+      }
+
+      // A concept is only still demoted if it still has the component it was
+      // demoted into. Restoring demotedAt without the twin would hide the
+      // concept from the pool with no component offering the way back — it
+      // would simply be gone from every view the app has.
+      const demotedAt = mirrorComponentId && idea.demotedAt ? new Date(idea.demotedAt) : null;
+
       const created = await tx.idea.create({
         data: {
           userId,
@@ -476,16 +798,79 @@ export async function importBackup(
           title: idea.title,
           contentJson: idea.contentJson,
           contentMd: idea.contentMd,
+          projectId,
+          mirrorComponentId,
+          demotedAt,
           ...(idea.createdAt ? { createdAt: new Date(idea.createdAt) } : {}),
         },
         select: { id: true },
       });
+      if (projectId) claimedProjects.add(projectId);
+      if (mirrorComponentId) claimedMirrors.add(mirrorComponentId);
       counts.ideas += 1;
       if (idea.tags.length > 0) {
         await tx.ideaTag.createMany({
           data: idea.tags.map((n) => ({ ideaId: created.id, tagId: tagIdByName.get(n)! })),
         });
       }
+
+      // The decomposition. A reference that doesn't resolve is dropped rather
+      // than pointed at nothing, the same way an unresolvable classId is.
+      const declaredAxes = idea.axes
+        .map((a) => ({ axisId: axisIdMap.get(a.axisId), order: a.order }))
+        .filter((a): a is { axisId: string; order: number } => Boolean(a.axisId));
+
+      const attachedComponents = idea.components
+        .map((c) => ({ componentId: componentIdMap.get(c.componentId), order: c.order }))
+        .filter((c): c is { componentId: string; order: number } => Boolean(c.componentId));
+
+      // Re-establish the invariant the mutation layer enforces: a concept that
+      // uses a component always declares that component's axis. A backup
+      // written by this app already satisfies it, but an edited one might not,
+      // and a component rendering under an undeclared axis would vanish.
+      const axisIds = new Set(declaredAxes.map((a) => a.axisId));
+      if (attachedComponents.length > 0) {
+        const owners = await tx.component.findMany({
+          where: { id: { in: attachedComponents.map((c) => c.componentId) }, userId },
+          select: { id: true, axisId: true },
+        });
+        let nextOrder = declaredAxes.length;
+        for (const owner of owners) {
+          if (axisIds.has(owner.axisId)) continue;
+          axisIds.add(owner.axisId);
+          declaredAxes.push({ axisId: owner.axisId, order: nextOrder });
+          nextOrder += 1;
+        }
+      }
+
+      if (declaredAxes.length > 0) {
+        await tx.conceptAxis.createMany({
+          data: declaredAxes.map((a) => ({
+            ideaId: created.id,
+            axisId: a.axisId,
+            order: a.order,
+          })),
+        });
+        counts.attachments += declaredAxes.length;
+      }
+      if (attachedComponents.length > 0) {
+        await tx.conceptComponent.createMany({
+          data: attachedComponents.map((c) => ({
+            ideaId: created.id,
+            componentId: c.componentId,
+            order: c.order,
+          })),
+        });
+        counts.attachments += attachedComponents.length;
+      }
+    }
+
+    if (unlinkedMirrors > 0) {
+      warnings.push(
+        `${unlinkedMirrors} concepts came back without their component twin, because the ` +
+          `component was already twinned with a concept in this account. They are ordinary ` +
+          `concepts now — nothing was lost, but the link between the two halves was.`,
+      );
     }
   });
 
@@ -493,5 +878,5 @@ export async function importBackup(
   publish(userId, { type: "board", at: new Date().toISOString() });
   publish(userId, { type: "ideas", at: new Date().toISOString() });
 
-  return counts;
+  return { ...counts, warnings };
 }

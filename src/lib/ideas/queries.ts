@@ -8,7 +8,9 @@ export type IdeaWithTags = Idea & { tags: TagChip[] };
 
 export async function getIdeasForUser(userId: string): Promise<IdeaWithTags[]> {
   const rows = await db.idea.findMany({
-    where: { userId },
+    // Demoted concepts still exist (the move is reversible) but are not in the
+    // pool any more.
+    where: { userId, demotedAt: null },
     orderBy: { order: "asc" },
     include: { tags: { include: { tag: true } } },
   });
@@ -30,6 +32,7 @@ export async function listIdeas(
   const rows = await db.idea.findMany({
     where: {
       userId,
+      demotedAt: null,
       ...(any.length > 0
         ? { tags: { some: { tag: { userId, name: { in: any } } } } }
         : {}),

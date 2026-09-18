@@ -1,0 +1,1015 @@
+/* The concept board: axes as rows, components as chips.
+   Built on the --s-/--fs-/--t- token layer. Reduced motion is handled globally
+   by collapsing --t-* to 1ms, so no separate media query is needed here. */
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--s-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+
+/* ---- header ------------------------------------------------------------- */
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  align-self: flex-start;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color var(--t-base) var(--ease);
+}
+
+.back:hover {
+  color: var(--text);
+}
+
+.title {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.titleBtn {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: var(--s-1) var(--s-2);
+  margin-left: calc(-1 * var(--s-2));
+  border-radius: var(--radius);
+  cursor: text;
+  transition: background var(--t-base) var(--ease);
+}
+
+.titleBtn:hover {
+  background: var(--elev-2);
+}
+
+.titleInput {
+  font: inherit;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  width: 100%;
+  color: var(--text);
+  background: var(--elev-1);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: var(--s-1) var(--s-2);
+  outline: none;
+}
+
+.tagRow {
+  max-width: 560px;
+}
+
+/* ---- layout ------------------------------------------------------------- */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: var(--s-5);
+  align-items: start;
+}
+
+.decomposition,
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.sectionTitle {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+/* The running tally of declared gaps. Amber, matching the slots it counts. */
+.gapCount {
+  font-size: var(--fs-sm);
+  color: var(--warning);
+}
+
+.doneCount {
+  font-size: var(--fs-sm);
+  color: var(--success);
+}
+
+.decompEmpty {
+  font-size: var(--fs-body);
+  color: var(--text-dim);
+  line-height: 1.6;
+  padding: var(--s-4);
+  background: var(--elev-1);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+/* ---- axis rows ---------------------------------------------------------- */
+
+.axisList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.axisRow {
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+/* A DECLARED GAP reads as unfinished on purpose. An axis that is simply not
+   applicable never renders a row at all, so it costs the concept nothing. */
+.axisRowGap {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+  background: color-mix(in srgb, var(--warning) 4%, var(--elev-2));
+}
+
+.axisHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.axisDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.axisName {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.axisRemove {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  opacity: 0;
+  transition: opacity var(--t-base) var(--ease), color var(--t-base) var(--ease),
+    background var(--t-base) var(--ease);
+}
+
+.axisRow:hover .axisRemove,
+.axisRemove:focus-visible {
+  opacity: 1;
+}
+
+.axisRemove:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* The nag. Dashed and amber so an undecomposed concept looks unfinished at a
+   glance, which is the entire point of declaring an axis you haven't filled. */
+.gapSlot {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--s-1) var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--warning) 55%, transparent);
+  border-radius: 999px;
+}
+
+/* ---- component chips ---------------------------------------------------- */
+
+.chipWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid color-mix(in srgb, var(--chip-color) 45%, transparent);
+  background: color-mix(in srgb, var(--chip-color) 12%, transparent);
+  border-radius: 999px;
+  overflow: hidden;
+  transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.chip:hover,
+.chipWrap:focus-within .chip {
+  background: color-mix(in srgb, var(--chip-color) 20%, transparent);
+  border-color: var(--chip-color);
+}
+
+.chipLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-2) var(--s-1) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: transparent;
+  border: none;
+}
+
+.chipCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 var(--s-1);
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: 999px;
+}
+
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--s-2) 0 var(--s-1);
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  transition: color var(--t-base) var(--ease);
+}
+
+.chipRemove:hover {
+  color: var(--danger);
+}
+
+.addChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  transition: color var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.addChip:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---- chip popover ------------------------------------------------------- */
+
+/* Rendered inside the wrapper rather than a portal so Tab moves straight into
+   it and focus-within keeps it open — the board work already established that
+   hover-only affordances are a dead end. */
+.popover {
+  position: absolute;
+  top: calc(100% + var(--s-1));
+  left: 0;
+  z-index: 30;
+  min-width: 240px;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--elev-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.popTitle {
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+
+.popDesc {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.popUsage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--border);
+}
+
+.popUsageLabel {
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.popUsageList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.popUsageLink {
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.popUsageLink:hover {
+  text-decoration: underline;
+}
+
+/* Edit-everywhere and make-it-a-concept, stacked: both act on the component
+   rather than on this concept, so they read as one group. */
+.popActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.popEdit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-1);
+  padding: var(--s-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: color var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.popEdit:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+/* Destructive, so it reads as destructive — but only on hover/focus, so the
+   popover isn't shouting a warning at someone who opened it to read a
+   description. */
+.popDelete {
+  composes: popEdit;
+}
+
+.popDelete:hover,
+.popDelete:focus-visible {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ---- component delete --------------------------------------------------- */
+
+.deleteConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.deleteTitle {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.deleteBody {
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+/* The names are the part that stops the delete, so they get the foreground. */
+.deleteNames {
+  color: var(--text);
+}
+
+.deleteGo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--surface);
+  background: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+}
+
+/* ---- component edit ----------------------------------------------------- */
+
+.editForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+/* Rename-propagates, said where the rename happens. */
+.editWarn {
+  font-size: var(--fs-label);
+  line-height: 1.5;
+  color: var(--warning);
+  padding: var(--s-1) var(--s-2);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  border-radius: var(--radius);
+}
+
+.editInput {
+  width: 100%;
+  padding: var(--s-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.editInput:focus {
+  border-color: var(--accent);
+}
+
+.editError {
+  font-size: var(--fs-sm);
+  color: var(--danger);
+}
+
+.editActions {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.editSave {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+}
+
+.editCancel {
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* ---- combobox ----------------------------------------------------------- */
+
+.combo {
+  position: relative;
+  display: inline-flex;
+}
+
+.comboInput {
+  width: 240px;
+  max-width: 100%;
+  padding: var(--s-1) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--elev-1);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  outline: none;
+}
+
+.comboPanel {
+  position: absolute;
+  top: calc(100% + var(--s-1));
+  left: 0;
+  z-index: 40;
+  min-width: 300px;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2);
+  background: var(--elev-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card-hover);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.comboGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.comboGroupLabel {
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  padding: var(--s-1) var(--s-2);
+}
+
+/* Existing components are listed with their descriptions *above* the create
+   option, never below it. Seeing what you already have is the only thing
+   stopping the vocabulary from splitting in two. */
+.comboOption {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: var(--s-2);
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.comboOption:hover,
+.comboOption:focus-visible {
+  background: var(--elev-1);
+  border-color: var(--border);
+}
+
+/* The arrow-key highlight. Focus never leaves the input in a combobox, so
+   without this the active option is announced but invisible. Stronger than
+   :hover so it reads as a position rather than a pointer happening to be
+   there. */
+.comboOptionActive {
+  background: var(--elev-2);
+  border-color: var(--accent);
+}
+
+.optName {
+  font-size: var(--fs-body);
+}
+
+.optDesc {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.optMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+}
+
+.optOffAxis {
+  padding: 0 var(--s-1);
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: 999px;
+}
+
+.comboCreate {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  width: 100%;
+  padding: var(--s-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  color: var(--accent);
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: var(--radius);
+  margin-top: var(--s-1);
+  transition: background var(--t-base) var(--ease);
+}
+
+.comboCreate:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.comboHint,
+.comboError {
+  padding: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.comboError {
+  color: var(--danger);
+}
+
+/* ---- near-duplicate confirm --------------------------------------------- */
+
+/* Deliberately obstructive. Creating "social deduction with a traitor" next to
+   "hidden-role social deduction" is the one mistake that makes the whole
+   feature worthless, so it takes a second, explicit decision. */
+.confirmPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  border-radius: var(--radius);
+}
+
+.confirmTitle {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--warning);
+}
+
+.confirmBody {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.confirmAnyway {
+  padding: var(--s-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: color var(--t-base) var(--ease);
+}
+
+.confirmAnyway:hover {
+  color: var(--text);
+}
+
+/* ---- add axis ----------------------------------------------------------- */
+
+.addAxisBtn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  transition: color var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.addAxisBtn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.axisPicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.axisPickerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.axisPickerTitle {
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+
+.axisPickerClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+}
+
+.axisPickerClose:hover {
+  color: var(--text);
+  background: var(--elev-1);
+}
+
+.axisPickerNote {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.axisOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.axisOption {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: border-color var(--t-base) var(--ease), background var(--t-base) var(--ease);
+}
+
+.axisOption:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.axisCreateRow {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.axisCreateInput {
+  flex: 1;
+  min-width: 0;
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.axisCreateInput:focus {
+  border-color: var(--accent);
+}
+
+.axisCreateBtn {
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+}
+
+.axisCreateBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- payoff + notes ----------------------------------------------------- */
+
+/* Empty until something is attached, then it names the other concepts sharing
+   the component. Reserved height so the layout doesn't jump when it fills. */
+.payoff {
+  min-height: calc(var(--fs-body) * 1.6);
+  font-size: var(--fs-body);
+  color: var(--accent);
+  line-height: 1.6;
+}
+
+/* ---- overlap ------------------------------------------------------------ */
+
+.overlap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: color-mix(in srgb, var(--accent) 5%, var(--elev-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--radius);
+}
+
+.overlapList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.overlapItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.overlapHead {
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+
+.overlapLink {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.overlapLink:hover {
+  text-decoration: underline;
+}
+
+.overlapSets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.overlapSet {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.overlapSetLabel,
+.overlapSetLabelAdds {
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+/* The complement is the actionable half, so it gets the accent rather than
+   the same grey as the intersection. */
+.overlapSetLabelAdds {
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.overlapNames {
+  font-size: var(--fs-sm);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.editorWrap {
+  position: relative;
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--s-3);
+  min-height: 240px;
+}
+
+.saveState {
+  position: absolute;
+  right: var(--s-3);
+  bottom: var(--s-2);
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+}
+
+/* ---- responsive --------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: var(--s-4) var(--s-3);
+  }
+
+  .comboInput {
+    width: 100%;
+  }
+
+  .combo {
+    display: flex;
+    width: 100%;
+  }
+
+  /* Anchored to the row rather than the input so a 300px panel can't push the
+     page sideways on a 375px screen. */
+  .comboPanel {
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+  }
+
+  .popover {
+    min-width: 0;
+    width: min(320px, calc(100vw - var(--s-7)));
+  }
+}
+
+/* Coarse pointers: the chips keep their look, the hit areas reach 44px. */
+@media (hover: none), (pointer: coarse) {
+  .back,
+  .titleBtn,
+  .chipLabel,
+  .addChip,
+  .comboOption,
+  .comboCreate,
+  .axisOption,
+  .popEdit,
+  .popDelete,
+  .deleteGo,
+  .editSave,
+  .editCancel,
+  .addAxisBtn,
+  .axisCreateBtn,
+  .confirmAnyway {
+    min-height: 44px;
+  }
+
+  /* Inline-ish controls need the box to grow, not just the text. */
+  .back,
+  .titleBtn {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .chipRemove,
+  .axisRemove,
+  .axisPickerClose {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .comboInput,
+  .axisCreateInput,
+  .editInput {
+    min-height: 44px;
+  }
+
+  /* No hover to reveal it on touch, so it is always visible. */
+  .axisRemove {
+    opacity: 1;
+  }
+}
