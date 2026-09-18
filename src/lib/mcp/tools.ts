@@ -11,6 +11,11 @@ import * as ideasQ from "@/lib/ideas/queries";
 import * as ideasM from "@/lib/ideas/mutations";
 import * as tagsQ from "@/lib/tags/queries";
 import * as tagsM from "@/lib/tags/mutations";
+import * as axesLib from "@/lib/concepts/axes";
+import * as componentsLib from "@/lib/concepts/components";
+import * as decomp from "@/lib/concepts/decomposition";
+import { resolveComponentByName } from "@/lib/concepts/resolve";
+import { findOverlapPairs } from "@/lib/concepts/overlap";
 import { markdownToTipTapJson, tipTapJsonToMarkdown } from "./content";
 import { parseRecurrence, type RecurrenceRule } from "@/lib/board/recurrence";
 
@@ -553,7 +558,7 @@ const rescueCard: Tool = {
 const listIdeas: Tool = {
   name: "list_ideas",
   description:
-    "List ideas in the user's idea pool. Filter by tag sets: tagsAny (OR), tagsAll (AND), tagsNot (exclude).",
+    "List ideas in the user's idea pool. Filter by tag sets: tagsAny (OR), tagsAll (AND), tagsNot (exclude). Each entry carries its decomposition in summary: `components` (the component names attached to it), `componentCount`, and `gapCount` (declared axes still empty). Use get_idea for the full per-axis breakdown.",
   inputSchema: {
     type: "object",
     properties: {
@@ -580,15 +585,31 @@ const listIdeas: Tool = {
     const tagsAny = optionalStringArray(rec, "tagsAny");
     const tagsAll = optionalStringArray(rec, "tagsAll");
     const tagsNot = optionalStringArray(rec, "tagsNot");
+    // The pool decomposition is one fixed set of queries regardless of pool
+    // size, so joining it on here is cheaper than a get_idea per row.
+    const [ideas, pool] = await Promise.all([
+      ideasQ.listIdeas(ctx.userId, { tagsAny, tagsAll, tagsNot }),
+      decomp.getPoolDecomposition(ctx.userId),
+    ]);
+    const byId = new Map(pool.map((p) => [p.id, p]));
     return {
-      ideas: await ideasQ.listIdeas(ctx.userId, { tagsAny, tagsAll, tagsNot }),
+      ideas: ideas.map((idea) => {
+        const p = byId.get(idea.id);
+        return {
+          ...idea,
+          components: p ? p.axes.flatMap((a) => a.components.map((c) => c.name)) : [],
+          componentCount: p?.componentCount ?? 0,
+          gapCount: p?.gapCount ?? 0,
+        };
+      }),
     };
   },
 };
 
 const getIdea: Tool = {
   name: "get_idea",
-  description: "Fetch a single idea with its full body. The body is returned as markdown-ish plain text.",
+  description:
+    "Fetch a single idea with its full body. The body is returned as markdown-ish plain text. Also returns the concept's decomposition: `axes` are the dimensions this concept has been broken down along, each with the components filed under it. An axis with an empty `components` list is a declared gap — the user said this dimension applies and has not filled it in yet — which is a different thing from an axis that simply isn't listed. `undeclaredAxes` are the user's other axes, available to declare on this concept. `gapCount` counts the declared-but-empty ones. Each component carries `alsoUsedBy`, the other concepts sharing it, which is where connections between ideas show up.",
   inputSchema: {
     type: "object",
     properties: { id: { type: "string" } },
@@ -597,13 +618,36 @@ const getIdea: Tool = {
   },
   handler: async (ctx, args) => {
     const rec = asRecord(args);
-    const idea = await ideasQ.getIdea(ctx.userId, requireString(rec, "id"));
+    const id = requireString(rec, "id");
+    const [idea, decomposition] = await Promise.all([
+      ideasQ.getIdea(ctx.userId, id),
+      decomp.getConceptDecomposition(ctx.userId, id),
+    ]);
     return {
       id: idea.id,
       order: idea.order,
       title: idea.title,
       body: tipTapJsonToMarkdown(idea.contentJson),
       tags: idea.tags,
+      axes: decomposition.axes.map((a) => ({
+        axisId: a.axisId,
+        name: a.name,
+        description: a.description,
+        components: a.components.map((c) => ({
+          id: c.id,
+          name: c.name,
+          description: c.description,
+          usageCount: c.usageCount,
+          alsoUsedBy: c.alsoUsedBy,
+        })),
+      })),
+      components: decomposition.axes.flatMap((a) => a.components.map((c) => c.name)),
+      undeclaredAxes: decomposition.undeclaredAxes.map((a) => ({
+        id: a.id,
+        name: a.name,
+        description: a.description,
+      })),
+      gapCount: decomposition.gapCount,
       createdAt: idea.createdAt,
       updatedAt: idea.updatedAt,
     };
@@ -742,7 +786,7 @@ const setIdeaTags: Tool = {
 const promoteIdea: Tool = {
   name: "promote_idea",
   description:
-    "Convert an idea into a new project. If the idea has a body, it becomes a single Backlog card. The idea survives and is linked to the project it became. Requires at least one declared component unless allowWithoutComponents is set.",
+    "Convert an idea into a new project. If the idea has a body, it becomes a single Backlog card. The idea survives and is linked to the project it became. Requires at least one attached component: use add_component_to_concept to break the idea into its parts first, then promote. allowWithoutComponents exists for the cases where that genuinely doesn't apply, not as the normal route.",
   inputSchema: {
     type: "object",
     properties: {
@@ -750,7 +794,7 @@ const promoteIdea: Tool = {
       allowWithoutComponents: {
         type: "boolean",
         description:
-          "Promote an idea that has no components yet. The gate is there to make you look at what the idea is made of first; set this only deliberately.",
+          "Promote an idea that has no components yet. The gate is there to make you look at what the idea is made of first, and add_component_to_concept is the way through it; set this only deliberately.",
       },
     },
     required: ["id"],
@@ -991,6 +1035,430 @@ const setProjectSchedule: Tool = {
   },
 };
 
+// ---- concept decomposition ------------------------------------------------
+//
+// Axes are the dimensions an idea gets broken down along (Mechanic, Setting,
+// Tone, Material); components are the reusable values filed under them. The
+// point of the feature is that components are *referenced, not copied* — two
+// concepts carrying "social deduction" carry the same row, which is the only
+// reason overlap between ideas is computable at all. Near-duplicate names are
+// what destroy that, so the write tools below push hard toward reuse.
+
+const VOCABULARY_NOTE =
+  "The component vocabulary is meant to stay small and heavily reused: the same component attached to several concepts is what makes overlap between ideas visible. Creating a second component that means what an existing one already means is a mistake, not a preference — it silently breaks the connection the feature exists to find. Search list_components before adding anything.";
+
+const listAxesTool: Tool = {
+  name: "list_axes",
+  description:
+    "List the user's axes — the dimensions concepts get decomposed along, such as Mechanic, Setting, or Tone. Axes belong to the user rather than to a kind of concept, so the same axis can sit on a game and on a story. Each entry includes componentCount (components filed under it) and conceptCount (concepts declaring it, declared gaps included).",
+  inputSchema: EMPTY_OBJECT_SCHEMA,
+  handler: async (ctx) => ({ axes: await axesLib.listAxes(ctx.userId) }),
+};
+
+const createAxisTool: Tool = {
+  name: "create_axis",
+  description:
+    "Create an axis. Names are unique per user, case-insensitively — \"Mechanic\" and \"mechanic\" are the same axis. Axes are few and long-lived; before adding one, check list_axes for one that already covers the dimension you mean. The color is optional and derives from the name when omitted.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      name: { type: "string", maxLength: 40 },
+      description: {
+        type: ["string", "null"],
+        description: "Short one-liner saying what this dimension is for.",
+      },
+      color: { type: ["string", "null"], description: "#rrggbb hex, or null to derive from the name." },
+    },
+    required: ["name"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    return axesLib.createAxis(ctx.userId, {
+      name: requireString(rec, "name", 40),
+      description: rec.description === null ? null : optionalString(rec, "description", 140),
+      color: rec.color === null ? null : optionalString(rec, "color", 7),
+    });
+  },
+};
+
+const updateAxisTool: Tool = {
+  name: "update_axis",
+  description:
+    "Update an axis's name, description, and/or color. Omit a field to leave it unchanged; pass null to clear description or color. Renaming an axis renames it everywhere it is declared.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      name: { type: "string", maxLength: 40 },
+      description: { type: ["string", "null"] },
+      color: { type: ["string", "null"], description: "#rrggbb hex, or null to derive from the name." },
+    },
+    required: ["id"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    return axesLib.updateAxis(ctx.userId, requireString(rec, "id"), {
+      name: optionalString(rec, "name", 40),
+      ...("description" in rec
+        ? { description: rec.description === null ? null : optionalString(rec, "description", 140) }
+        : {}),
+      ...("color" in rec ? { color: rec.color === null ? null : optionalString(rec, "color", 7) } : {}),
+    });
+  },
+};
+
+const deleteAxisTool: Tool = {
+  name: "delete_axis",
+  description:
+    "DESTRUCTIVE — delete an axis, every component filed under it, and every attachment of those components to concepts. Check the componentCount and conceptCount from list_axes first; this is not a detach, the vocabulary goes with it.",
+  inputSchema: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    await axesLib.deleteAxis(ctx.userId, requireString(rec, "id"));
+    return { deleted: true };
+  },
+};
+
+const listComponentsTool: Tool = {
+  name: "list_components",
+  description:
+    `List the user's component vocabulary, axis-major then name, optionally filtered to one axis. Includes components attached to nothing, since this list is the only place those can be seen. Each entry carries its description, usageCount, and usedBy (the concepts using it by name). ${VOCABULARY_NOTE}`,
+  inputSchema: {
+    type: "object",
+    properties: {
+      axisId: { type: "string", description: "Only components filed under this axis." },
+    },
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    const axisId = optionalString(rec, "axisId");
+    const all = await componentsLib.listComponents(ctx.userId);
+    return { components: axisId ? all.filter((c) => c.axisId === axisId) : all };
+  },
+};
+
+const createComponentTool: Tool = {
+  name: "create_component",
+  description:
+    `Add a component to the vocabulary without attaching it to anything. Usually the wrong tool: add_component_to_concept both finds-or-creates and attaches in one step, and attaching is what makes a component mean something. Reach for this only to seed vocabulary deliberately. ${VOCABULARY_NOTE} A name too close to one that already exists is refused; the error lists what it looked like, and confirmDespiteSimilar forces it through if they really are different things.`,
+  inputSchema: {
+    type: "object",
+    properties: {
+      axisId: { type: "string" },
+      name: { type: "string", maxLength: 64, description: "Lowercased and whitespace-collapsed; vocabulary is lowercase." },
+      description: { type: ["string", "null"], maxLength: 140 },
+      confirmDespiteSimilar: {
+        type: "boolean",
+        description:
+          "Create even though the name resembles an existing component. Set this only after reading the matches in the error and concluding they mean different things.",
+      },
+    },
+    required: ["axisId", "name"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    const resolved = await resolveComponentByName(ctx.userId, requireString(rec, "name", 64), {
+      axisId: requireString(rec, "axisId"),
+      description: rec.description === null ? null : optionalString(rec, "description", 140),
+      create: true,
+      confirmed: optionalBool(rec, "confirmDespiteSimilar"),
+    });
+    if (resolved.status === "needs-confirmation") throw nearDuplicateError(resolved.matches);
+    if (resolved.status === "would-create") {
+      throw new ValidationError("could not resolve a component for that name");
+    }
+    return {
+      component: resolved.component,
+      created: resolved.status === "created",
+    };
+  },
+};
+
+const updateComponentTool: Tool = {
+  name: "update_component",
+  description:
+    "Update a component's name, description, and/or axis. The edit lands on every concept using it — that is the point of components being referenced rather than copied, so check usageCount from list_components before renaming one. Omit a field to leave it unchanged. Moving a component to another axis declares that axis on every concept already using it.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      name: { type: "string", maxLength: 64 },
+      description: { type: ["string", "null"], maxLength: 140 },
+      axisId: { type: "string", description: "Move the component to a different axis." },
+    },
+    required: ["id"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    return componentsLib.updateComponent(ctx.userId, requireString(rec, "id"), {
+      name: optionalString(rec, "name", 64),
+      ...("description" in rec
+        ? { description: rec.description === null ? null : optionalString(rec, "description", 140) }
+        : {}),
+      axisId: optionalString(rec, "axisId"),
+    });
+  },
+};
+
+const deleteComponentTool: Tool = {
+  name: "delete_component",
+  description:
+    "DESTRUCTIVE — remove a component from the vocabulary entirely. It comes off every concept using it; check usageCount from list_components first. To take a component off one concept only, use remove_component_from_concept instead. Each affected concept keeps the axis, so a filled slot becomes a declared gap rather than the axis vanishing. Returns detachedFrom (how many concepts lost it) and restoredConcept — a demoted concept that was living as this component is returned to the idea pool rather than being stranded.",
+  inputSchema: {
+    type: "object",
+    properties: { id: { type: "string" } },
+    required: ["id"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    return componentsLib.deleteComponent(ctx.userId, requireString(rec, "id"));
+  },
+};
+
+/**
+ * The near-duplicate refusal, as an error an MCP client can act on. The names
+ * go in the message because the message is the only thing the caller reads.
+ */
+function nearDuplicateError(
+  matches: { name: string; axisName: string; usageCount: number }[],
+): ValidationError {
+  const list = matches
+    .map((m) => `"${m.name}" (axis ${m.axisName}, used by ${m.usageCount})`)
+    .join(", ");
+  return new ValidationError(
+    `that name is close to component(s) you already have: ${list}. ` +
+      "Attach one of those instead — reusing a component is what makes overlap between concepts visible. " +
+      "If it genuinely means something different, retry with confirmDespiteSimilar: true.",
+  );
+}
+
+const addComponentToConcept: Tool = {
+  name: "add_component_to_concept",
+  description:
+    `Attach a component to a concept by name, creating it only if you say so. This is the main decomposition tool and the way through promote_idea's gate. ${VOCABULARY_NOTE} Resolution order: an exact name match attaches that existing component and creates nothing; a name that merely resembles existing ones is refused with those matches named, so you can attach one instead; only with create: true is new vocabulary minted, and even then a near-miss still blocks unless confirmDespiteSimilar is also set. axisId is required whenever a component might be created. Attaching also declares the component's axis on the concept if it wasn't already. Idempotent. Returns alsoUsedBy — the other concepts already carrying this component, which is the connection you were looking for.`,
+  inputSchema: {
+    type: "object",
+    properties: {
+      ideaId: { type: "string" },
+      name: {
+        type: "string",
+        maxLength: 64,
+        description: "Component name. The normal input; matched against the existing vocabulary first.",
+      },
+      componentId: {
+        type: "string",
+        description: "Attach a known component by id, skipping name resolution. Use name unless you already have the id from list_components.",
+      },
+      axisId: {
+        type: "string",
+        description: "Axis to file a newly created component under. Required when create is true.",
+      },
+      create: {
+        type: "boolean",
+        description: "Allow minting a new component when the name matches nothing. Default false, so an unrecognised name fails loudly rather than widening the vocabulary by accident.",
+      },
+      confirmDespiteSimilar: {
+        type: "boolean",
+        description: "Create even though the name resembles existing components. Only meaningful with create: true, and only after reading the matches in the error.",
+      },
+      description: {
+        type: ["string", "null"],
+        maxLength: 140,
+        description: "Description for a newly created component. Ignored when an existing one is found.",
+      },
+    },
+    required: ["ideaId"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    const ideaId = requireString(rec, "ideaId");
+    const componentId = optionalString(rec, "componentId");
+    const name = optionalString(rec, "name", 64);
+
+    // The id path is an escape hatch for callers that already did the lookup;
+    // name-first is the default, because resolving by name is where reuse happens.
+    if (componentId) {
+      const result = await componentsLib.attachComponent(ctx.userId, ideaId, componentId);
+      return {
+        attached: true,
+        created: false,
+        component: {
+          id: result.component.id,
+          name: result.component.name,
+          axisId: result.component.axisId,
+          axisName: result.component.axisName,
+        },
+        alsoUsedBy: result.alsoUsedBy,
+      };
+    }
+
+    if (name === undefined) {
+      throw new ValidationError("name is required (or componentId, if you already have it)");
+    }
+
+    const resolved = await resolveComponentByName(ctx.userId, name, {
+      axisId: optionalString(rec, "axisId"),
+      description: rec.description === null ? null : optionalString(rec, "description", 140),
+      create: optionalBool(rec, "create"),
+      confirmed: optionalBool(rec, "confirmDespiteSimilar"),
+    });
+
+    if (resolved.status === "needs-confirmation") throw nearDuplicateError(resolved.matches);
+    if (resolved.status === "would-create") {
+      throw new ValidationError(
+        `no component called "${resolved.name}" exists. ` +
+          "Check list_components for one that already means this, or retry with create: true and an axisId to add it to the vocabulary.",
+      );
+    }
+
+    const result = await componentsLib.attachComponent(
+      ctx.userId,
+      ideaId,
+      resolved.component.id,
+    );
+    return {
+      attached: true,
+      created: resolved.status === "created",
+      component: {
+        id: result.component.id,
+        name: result.component.name,
+        axisId: result.component.axisId,
+        axisName: result.component.axisName,
+      },
+      alsoUsedBy: result.alsoUsedBy,
+    };
+  },
+};
+
+const removeComponentFromConcept: Tool = {
+  name: "remove_component_from_concept",
+  description:
+    "Detach a component from one concept. The component stays in the vocabulary and stays on every other concept using it — use delete_component to remove it everywhere. The concept keeps the axis, so the slot becomes a declared gap rather than disappearing.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      ideaId: { type: "string" },
+      componentId: { type: "string" },
+    },
+    required: ["ideaId", "componentId"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    await componentsLib.detachComponent(
+      ctx.userId,
+      requireString(rec, "ideaId"),
+      requireString(rec, "componentId"),
+    );
+    return { detached: true };
+  },
+};
+
+const declareConceptAxis: Tool = {
+  name: "declare_concept_axis",
+  description:
+    "Declare an axis on a concept without filling it — an explicit \"this dimension applies here and I haven't decided yet\". Distinct from add_component_to_concept, which attaches an actual component (and declares the axis as a side effect). A declared empty axis shows up as a gap to fill; an axis that isn't declared reads as not applicable. Those are different statements and this is how you make the first one. Idempotent.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      ideaId: { type: "string" },
+      axisId: { type: "string" },
+    },
+    required: ["ideaId", "axisId"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    await componentsLib.addConceptAxis(
+      ctx.userId,
+      requireString(rec, "ideaId"),
+      requireString(rec, "axisId"),
+    );
+    return { declared: true };
+  },
+};
+
+const undeclareConceptAxis: Tool = {
+  name: "undeclare_concept_axis",
+  description:
+    "Undeclare an axis on a concept — \"this dimension does not apply here\". Detaches every component filed under that axis from this concept, since a component cannot outlive its axis row on a concept; the components themselves survive in the vocabulary. Returns how many attachments went. The axis itself is untouched — use delete_axis to remove it from the user's set entirely.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      ideaId: { type: "string" },
+      axisId: { type: "string" },
+    },
+    required: ["ideaId", "axisId"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    return componentsLib.removeConceptAxis(
+      ctx.userId,
+      requireString(rec, "ideaId"),
+      requireString(rec, "axisId"),
+    );
+  },
+};
+
+const findOverlappingConcepts: Tool = {
+  name: "find_overlapping_concepts",
+  description:
+    "Find concepts that share components. Pass ideaId for one concept's partners; omit it to scan the whole pool. Deliberately not \"similar\" concepts: the useful pairs are not duplicates, they are an idea plus the pieces it was missing, so each result also names what the other side carries that this one lacks. A pair needs at least two shared components to appear — one is noise. Only concepts still in the pool are considered.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      ideaId: {
+        type: "string",
+        description: "Limit to this concept's overlap partners. Omit to scan every pair in the pool.",
+      },
+    },
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    const ideaId = optionalString(rec, "ideaId");
+    if (ideaId) {
+      return { partners: await decomp.getOverlapPartners(ctx.userId, ideaId) };
+    }
+
+    const pool = await decomp.getPoolDecomposition(ctx.userId);
+    const names = new Map<string, string>();
+    for (const concept of pool) {
+      for (const axis of concept.axes) {
+        for (const chip of axis.components) names.set(chip.id, chip.name);
+      }
+    }
+    const label = (id: string) => names.get(id) ?? id;
+
+    const pairs = findOverlapPairs(
+      pool.map((c) => ({ id: c.id, title: c.title, componentIds: c.componentIds })),
+    );
+    return {
+      pairs: pairs.map((p) => ({
+        a: { id: p.a.id, title: p.a.title },
+        b: { id: p.b.id, title: p.b.title },
+        shared: p.shared,
+        sharedNames: p.sharedIds.map(label).sort(),
+        aOnlyNames: p.aOnlyIds.map(label).sort(),
+        bOnlyNames: p.bOnlyIds.map(label).sort(),
+      })),
+    };
+  },
+};
+
 export const TOOLS: Tool[] = [
   whoami,
   listProjects,
@@ -1026,6 +1494,19 @@ export const TOOLS: Tool[] = [
   updateClassTool,
   deleteClassTool,
   setProjectSchedule,
+  listAxesTool,
+  createAxisTool,
+  updateAxisTool,
+  deleteAxisTool,
+  listComponentsTool,
+  createComponentTool,
+  updateComponentTool,
+  deleteComponentTool,
+  addComponentToConcept,
+  removeComponentFromConcept,
+  declareConceptAxis,
+  undeclareConceptAxis,
+  findOverlappingConcepts,
 ];
 
 export function findTool(name: string): Tool | undefined {

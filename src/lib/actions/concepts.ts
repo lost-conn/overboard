@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache";
 import { currentUser } from "@/lib/auth";
 import * as components from "@/lib/concepts/components";
 import { createAxis } from "@/lib/concepts/axes";
-import { getVocabulary } from "@/lib/concepts/decomposition";
-import { findNearDuplicates } from "@/lib/concepts/normalize";
+import { resolveComponentByName } from "@/lib/concepts/resolve";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 
 async function requireUserId(): Promise<string> {
@@ -66,6 +65,12 @@ export async function attachComponentAction(args: {
  * Refuses on a high-scoring fuzzy match unless `confirmed` is set. Near-duplicate
  * creation is the failure mode that makes this whole feature worthless, so it is
  * made to feel wrong rather than merely discouraged.
+ *
+ * The ordering lives in {@link resolveComponentByName}, shared with the MCP
+ * tools, so the gate cannot be enforced in one surface and skipped in the other.
+ * A name that exactly matches something the user already has resolves to that
+ * component and attaches it rather than failing — typing a name you already own
+ * is a reuse, not a collision.
  */
 export async function createAndAttachComponentAction(args: {
   ideaId: string;
@@ -76,30 +81,28 @@ export async function createAndAttachComponentAction(args: {
 }): Promise<AttachOutcome> {
   const userId = await requireUserId();
   try {
-    if (!args.confirmed) {
-      const vocabulary = await getVocabulary(userId);
-      const dupes = findNearDuplicates(args.name, vocabulary, (v) => v.name);
-      if (dupes.length > 0) {
-        return {
-          ok: false,
-          needsConfirm: true,
-          matches: dupes.slice(0, 5).map((d) => ({
-            id: d.item.id,
-            name: d.item.name,
-            description: d.item.description,
-            axisName: d.item.axisName,
-            usageCount: d.item.usageCount,
-          })),
-        };
-      }
+    const resolved = await resolveComponentByName(userId, args.name, {
+      axisId: args.axisId,
+      description: args.description ?? null,
+      // This action is the "type a new name" path, so creating is always on the
+      // table; only the near-duplicate confirm is up to the caller.
+      create: true,
+      confirmed: args.confirmed,
+    });
+
+    if (resolved.status === "needs-confirmation") {
+      return { ok: false, needsConfirm: true, matches: resolved.matches };
+    }
+    // `create: true` above rules this out; kept so the union stays exhaustive.
+    if (resolved.status === "would-create") {
+      return { ok: false, error: "could not resolve a component for that name" };
     }
 
-    const created = await components.createComponent(userId, {
-      axisId: args.axisId,
-      name: args.name,
-      description: args.description ?? null,
-    });
-    const result = await components.attachComponent(userId, args.ideaId, created.id);
+    const result = await components.attachComponent(
+      userId,
+      args.ideaId,
+      resolved.component.id,
+    );
     revalidateConcept(args.ideaId);
     return {
       ok: true,
