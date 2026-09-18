@@ -11,15 +11,23 @@ const ERROR_MESSAGES: Record<LoginError, string> = {
   invalid: "Email or password is incorrect.",
 };
 
+type LoginNotice = "reset";
+
+const NOTICE_MESSAGES: Record<LoginNotice, string> = {
+  reset: "Password updated. Sign in with the new one.",
+};
+
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string }>;
 }) {
   if (await currentUser()) redirect("/");
 
-  const { error } = await searchParams;
+  const { error, notice } = await searchParams;
   const message = error && error in ERROR_MESSAGES ? ERROR_MESSAGES[error as LoginError] : null;
+  const noticeMessage =
+    notice && notice in NOTICE_MESSAGES ? NOTICE_MESSAGES[notice as LoginNotice] : null;
 
   return (
     <div className={styles.shell}>
@@ -29,6 +37,7 @@ export default async function LoginPage({
         <p className={styles.subtitle}>Welcome back.</p>
 
         {message ? <div className={styles.error}>{message}</div> : null}
+        {noticeMessage ? <div className={styles.notice}>{noticeMessage}</div> : null}
 
         <form className={styles.form} action={loginAction}>
           <div className={styles.field}>
@@ -62,6 +71,9 @@ export default async function LoginPage({
           </button>
         </form>
 
+        <p className={styles.alt}>
+          <Link href="/forgot">Forgot password?</Link>
+        </p>
         <p className={styles.alt}>
           No account? <Link href="/register">Create one</Link>
         </p>

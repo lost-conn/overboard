@@ -92,9 +92,26 @@
   padding: 8px 10px;
 }
 
+/* Same shape as .error, in the colour that means "this went fine". Used for
+   the "check your mail" and "password updated" confirmations. */
+.notice {
+  font-size: 13px;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+
 .alt {
   margin-top: 16px;
   font-size: 13px;
   color: var(--text-dim);
   text-align: center;
+}
+
+/* The login card now carries two of these ("Forgot password?" and "No
+   account?"); stacking two 16px margins reads as a gap rather than a pair. */
+.alt + .alt {
+  margin-top: 6px;
 }

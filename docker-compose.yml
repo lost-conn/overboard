@@ -22,6 +22,18 @@ services:
     volumes:
       - ./data:/app/data
 
+    # Mail settings come from a `.env` next to this file, which Compose
+    # substitutes into the `${...}` values below. `.gitignore` already covers
+    # `.env*`, so the key never enters the tree. Leaving them unset is a legal
+    # state: with no RESEND_API_KEY the password reset flow still works from the
+    # user's side and delivers nothing, and the server log says so each time.
+    #
+    # This is the Docker path only. The deployed instance is built by jkbase
+    # from a git push and gets its secrets platform-side via
+    # `jkbase secret set KEY=value` — none of that is configured here.
     environment:
       NODE_ENV: production
       DATABASE_URL: file:/app/data/app.db
+      APP_BASE_URL: ${APP_BASE_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}

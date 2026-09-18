@@ -26,6 +26,7 @@ model User {
   failedWindowDays Int      @default(7)
 
   sessions       Session[]
+  passwordResets PasswordResetToken[]
   projects       Project[]
   ideas          Idea[]
   tokens         Token[]
@@ -97,6 +98,32 @@ model Session {
   userId    String
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// A password reset link, in the one shape neither Token nor Session has.
+// Token never expires and is meant to be used forever; Session expires but is
+// deliberately reusable. A reset link has to be both short-lived *and*
+// single-use, so it gets its own table rather than a third meaning bolted onto
+// one of those two.
+//
+// `hash` is an unsalted SHA-256 of the plaintext, same as Token and for the
+// same reason: the secret is 256 bits of CSPRNG output, so there is no
+// dictionary to slow an attacker down with and nothing for bcrypt to buy. It is
+// @unique so lookup is by hash — the plaintext is never stored anywhere.
+//
+// `usedAt` rather than deleting the row on use: the row is also what the
+// per-email throttle counts, so a consumed token still has a job to do.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  hash      String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

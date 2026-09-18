@@ -100,6 +100,75 @@ server, so schema changes land automatically on the next deploy.
 anyway. Useful when you've edited the compose file or just want a
 fresh container without backdating a commit to trigger it.
 
+## Configuration
+
+Everything is read straight from `process.env`. There is no config file and
+no loader; if a variable isn't set, the code says what it does instead.
+
+| Variable         | Required | What it does                                                        |
+| ---------------- | -------- | ------------------------------------------------------------------- |
+| `DATABASE_URL`   | yes      | SQLite file, e.g. `file:/app/data/app.db`                            |
+| `APP_BASE_URL`   | for mail | Public origin used to build the link in reset mail                   |
+| `MAIL_FROM`      | no       | From-address for outgoing mail                                       |
+| `RESEND_API_KEY` | for mail | Resend API key. Without it, no mail is sent                          |
+
+Two places to put them, depending on which instance you mean:
+
+- **jkbase** (the deployed instance, built from a git push): set them
+  platform-side, so nothing lands in the repo.
+
+  ```bash
+  jkbase secret set RESEND_API_KEY=re_...
+  jkbase secret set MAIL_FROM='Overboard <overboard@noreply.lostconnection.dev>'
+  jkbase secret set APP_BASE_URL=https://ob.lostconnection.dev
+  ```
+
+- **Docker Compose** (the laptop): a `.env` next to `docker-compose.yml`.
+  Compose substitutes it into the `environment:` block, and `.gitignore`
+  already covers `.env*`.
+
+  ```ini
+  RESEND_API_KEY=re_...
+  MAIL_FROM=Overboard <overboard@noreply.lostconnection.dev>
+  APP_BASE_URL=https://overboard.example.com
+  ```
+
+### Password reset mail
+
+There is exactly one outgoing message in this app — the reset link — and it
+goes out through Resend's HTTP API, called with `fetch`. No SMTP server, no
+mail dependency; the request is one POST with a JSON body and an SDK would
+have bought nothing but a version to keep current.
+
+**If `RESEND_API_KEY` is absent, reset mail silently does nothing.** The
+forgot-password form still accepts the address, still says "if that address
+has an account, a reset link is on its way", and no link is ever sent, because
+the form is deliberately unable to tell you anything about the address you
+typed — including that the server can't mail it. The only place the failure
+surfaces is the server log, which complains on every attempt in production.
+That is the tradeoff: a form that reveals nothing also can't reveal that it is
+broken.
+
+In development the missing key is treated as a feature instead. The message
+that would have been sent, link and all, is printed to stdout, so the whole
+flow is walkable on a laptop with no mail provider behind it. That branch is
+`NODE_ENV=development` only — the link is a working key to an account and it
+is never written to a production log.
+
+`APP_BASE_URL` exists because nothing else in the process knows the public
+hostname: the server is bound to localhost and the name lives one layer out in
+the reverse proxy. The request's `Host` header would be the obvious substitute
+and it is attacker-controlled, which is the wrong property for the link in a
+password-reset mail.
+
+Reset links last an hour, work once, and are stored as a SHA-256 digest —
+same construction as the MCP tokens, and for the same reason: 256 bits of
+random has no dictionary to slow anyone down with. Requests are capped at
+three per hour per account, because an unthrottled "mail this address a link"
+button on a public signup is a mail cannon pointed at whoever an attacker
+names. A successful reset also deletes every session on the account, on the
+grounds that locking someone out is the entire point.
+
 ## Local dev
 
 ```bash
@@ -112,6 +181,11 @@ npm run dev
 Then open `http://localhost:3000` and register an account. If you'd
 rather not stare at an empty grid, `npm run seed -- you@example.com`
 will plant three sample projects with about a dozen cards.
+
+No mail configuration is needed to exercise the forgot-password flow:
+without `RESEND_API_KEY`, `next dev` prints the message it would have
+sent — reset link included — to the terminal. Paste the link into the
+browser and carry on.
 
 To hit the dev server from a phone or another machine on your LAN,
 add the LAN IP (or a pattern) to `allowedDevOrigins` in
