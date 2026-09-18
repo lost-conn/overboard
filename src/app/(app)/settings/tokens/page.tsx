@@ -7,7 +7,6 @@ import {
   revokeTokenAction,
 } from "@/lib/actions/tokens";
 import { PageHeader } from "../../../_components/AppShell";
-import { RestoreBackup } from "./RestoreBackup";
 import styles from "./tokens.module.css";
 
 export default async function TokensPage() {
@@ -93,26 +92,6 @@ export default async function TokensPage() {
             ))}
           </div>
         )}
-      </section>
-
-      <section className={styles.card}>
-        <div className={styles.cardTitle}>Data backup</div>
-        <p className={styles.backupHint}>
-          Download all projects, cards, ideas, tags, and your component
-          vocabulary as a single JSON file.
-        </p>
-        <a className={styles.submit} href="/api/backup" download>
-          Download JSON backup
-        </a>
-      </section>
-
-      <section className={styles.card}>
-        <div className={styles.cardTitle}>Restore backup</div>
-        <p className={styles.backupHint}>
-          Import a backup JSON. Card assignees and project sharing aren&apos;t
-          included in a backup, so they won&apos;t be restored.
-        </p>
-        <RestoreBackup />
       </section>
 
       <div className={styles.usage}>

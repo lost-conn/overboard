@@ -20,6 +20,7 @@ const SETTINGS = [
   { href: "/settings/classes", label: "Schedule classes" },
   { href: "/settings/axes", label: "Component axes" },
   { href: "/settings/tokens", label: "API tokens" },
+  { href: "/settings/backup", label: "Backup & restore" },
 ] as const;
 
 /** "/" only matches itself; everything else matches its subtree. */

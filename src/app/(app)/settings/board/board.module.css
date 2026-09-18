@@ -8,16 +8,11 @@
 }
 
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
+  composes: card from "../shared.module.css";
 }
 
 .cardTitle {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 12px;
+  composes: cardTitle from "../shared.module.css";
 }
 
 .hint {
@@ -61,19 +56,5 @@
 }
 
 .submit {
-  display: inline-block;
-  padding: 9px 14px;
-  font: inherit;
-  font-weight: 500;
-  font-size: 14px;
-  color: var(--surface);
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius);
-  cursor: pointer;
-}
-
-.submit:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+  composes: submit from "../shared.module.css";
 }
