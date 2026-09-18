@@ -590,6 +590,15 @@
   border-color: var(--border);
 }
 
+/* The arrow-key highlight. Focus never leaves the input in a combobox, so
+   without this the active option is announced but invisible. Stronger than
+   :hover so it reads as a position rather than a pointer happening to be
+   there. */
+.comboOptionActive {
+  background: var(--elev-2);
+  border-color: var(--accent);
+}
+
 .optName {
   font-size: var(--fs-body);
 }

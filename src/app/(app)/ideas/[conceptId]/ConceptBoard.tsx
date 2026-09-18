@@ -509,7 +509,12 @@ function ComponentChipItem({
     );
   };
 
-  const panelId = `component-${chip.id}-info`;
+  // aria-describedby flattens its target to a string, so pointing it at the
+  // popover — a group holding links and buttons — threw away the controls and
+  // announced a run-on of their labels. It now points at the description text
+  // and nothing else; the usage links and actions are found by navigating to
+  // them, which is what they are for.
+  const descId = `component-${chip.id}-desc`;
 
   return (
     <span
@@ -527,7 +532,7 @@ function ComponentChipItem({
           type="button"
           className={styles.chipLabel}
           aria-expanded={open}
-          aria-describedby={open ? panelId : undefined}
+          aria-describedby={open && mode === "view" ? descId : undefined}
           onClick={() => setOpen((v) => !v)}
         >
           {chip.name}
@@ -549,7 +554,7 @@ function ComponentChipItem({
       </span>
 
       {open ? (
-        <span className={styles.popover} id={panelId} role="group" aria-label={chip.name}>
+        <span className={styles.popover} role="group" aria-label={chip.name}>
           {mode === "edit" ? (
             <ComponentEditForm
               conceptId={conceptId}
@@ -574,7 +579,7 @@ function ComponentChipItem({
           ) : (
             <>
               <span className={styles.popTitle}>{chip.name}</span>
-              <span className={styles.popDesc}>
+              <span className={styles.popDesc} id={descId}>
                 {chip.description ?? "No description yet."}
               </span>
 
@@ -863,10 +868,32 @@ function AddComponentCombobox({
     [vocabulary, query],
   );
 
+  // "Create X" is navigable too. It is one of the things Enter can do from
+  // here, so leaving it out of the listbox would mean the keyboard user's
+  // options and the visible options were different lists.
+  const canCreate = query.trim().length > 0 && !exactExists;
+  const optionCount = matches.length + (canCreate ? 1 : 0);
+  const createIndex = canCreate ? matches.length : -1;
+
+  // -1 is "nothing active", which is the state the input starts in and returns
+  // to on every keystroke: with an autocomplete list the options move under
+  // you, so carrying a highlight across a new query would point at whatever
+  // happened to land in that slot.
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const [seenOptions, setSeenOptions] = useState({ query, optionCount });
+  if (seenOptions.query !== query || seenOptions.optionCount !== optionCount) {
+    setSeenOptions({ query, optionCount });
+    setActiveIndex(-1);
+  }
+
+  const listboxId = `combo-${axis.axisId}-listbox`;
+  const optionId = (i: number) => `combo-${axis.axisId}-option-${i}`;
+
   const reset = () => {
     setQuery("");
     setError(null);
     setPendingConfirm(null);
+    setActiveIndex(-1);
   };
 
   const attachExisting = (componentId: string) => {
@@ -934,6 +961,15 @@ function AddComponentCombobox({
         maxLength={MAX_COMPONENT_NAME_LEN}
         placeholder={`Search or add to ${axis.name}...`}
         aria-label={`Add a component to ${axis.name}`}
+        // The real combobox pattern. This is the control where reuse happens
+        // instead of re-typing, which is the whole mechanism keeping the
+        // vocabulary from drifting into near-duplicates — so it is worth the
+        // full pattern rather than "it's buttons, you can Tab to them".
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={optionCount > 0}
+        aria-controls={optionCount > 0 ? listboxId : undefined}
+        aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
         onChange={(e) => {
           setQuery(e.target.value);
           setPendingConfirm(null);
@@ -941,11 +977,38 @@ function AddComponentCombobox({
         }}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
+            e.preventDefault();
             reset();
             setOpen(false);
+            return;
+          }
+          if (optionCount > 0 && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+            e.preventDefault();
+            const delta = e.key === "ArrowDown" ? 1 : -1;
+            // Wraps, and -1 enters the list from whichever end you asked for.
+            setActiveIndex((i) =>
+              i === -1
+                ? delta === 1
+                  ? 0
+                  : optionCount - 1
+                : (i + delta + optionCount) % optionCount,
+            );
+            return;
+          }
+          if (optionCount > 0 && (e.key === "Home" || e.key === "End")) {
+            e.preventDefault();
+            setActiveIndex(e.key === "Home" ? 0 : optionCount - 1);
+            return;
           }
           if (e.key === "Enter") {
             e.preventDefault();
+            if (activeIndex >= 0) {
+              if (activeIndex === createIndex) create(false);
+              else attachExisting(matches[activeIndex].id);
+              return;
+            }
+            // Nothing highlighted: unchanged behaviour. Typing a name in full
+            // and pressing Enter attaches the existing one rather than asking.
             if (matches.length > 0 && matches[0].name === query.trim().toLowerCase()) {
               attachExisting(matches[0].id);
             } else if (query.trim().length > 0) {
@@ -994,17 +1057,37 @@ function AddComponentCombobox({
           </span>
         ) : (
           <>
+            {/* Outside the listbox on purpose: a listbox's children have to be
+                options (or groups of them), and this is a heading. */}
             {matches.length > 0 ? (
-              <span className={styles.comboGroup}>
-                <span className={styles.comboGroupLabel}>
-                  {query.trim().length === 0 ? "Your vocabulary" : "Existing components"}
-                </span>
-                {matches.map((m) => (
+              <span className={styles.comboGroupLabel}>
+                {query.trim().length === 0 ? "Your vocabulary" : "Existing components"}
+              </span>
+            ) : null}
+
+            {optionCount > 0 ? (
+              <span
+                role="listbox"
+                id={listboxId}
+                aria-label={`Components to add to ${axis.name}`}
+                className={styles.comboGroup}
+              >
+                {matches.map((m, i) => (
                   <button
                     key={m.id}
                     type="button"
-                    className={styles.comboOption}
+                    role="option"
+                    id={optionId(i)}
+                    aria-selected={activeIndex === i}
+                    // Focus stays in the input and moves by
+                    // aria-activedescendant, so the options are out of the tab
+                    // order. Click and tap are untouched.
+                    tabIndex={-1}
+                    className={`${styles.comboOption} ${
+                      activeIndex === i ? styles.comboOptionActive : ""
+                    }`}
                     onClick={() => attachExisting(m.id)}
+                    onMouseMove={() => setActiveIndex(i)}
                     disabled={isPending}
                   >
                     <span className={styles.optName}>{m.name}</span>
@@ -1019,18 +1102,26 @@ function AddComponentCombobox({
                     </span>
                   </button>
                 ))}
-              </span>
-            ) : null}
 
-            {query.trim().length > 0 && !exactExists ? (
-              <button
-                type="button"
-                className={styles.comboCreate}
-                onClick={() => create(false)}
-                disabled={isPending}
-              >
-                <Plus size={12} aria-hidden /> Create &ldquo;{query.trim()}&rdquo; on {axis.name}
-              </button>
+                {canCreate ? (
+                  <button
+                    type="button"
+                    role="option"
+                    id={optionId(createIndex)}
+                    aria-selected={activeIndex === createIndex}
+                    tabIndex={-1}
+                    className={`${styles.comboCreate} ${
+                      activeIndex === createIndex ? styles.comboOptionActive : ""
+                    }`}
+                    onClick={() => create(false)}
+                    onMouseMove={() => setActiveIndex(createIndex)}
+                    disabled={isPending}
+                  >
+                    <Plus size={12} aria-hidden /> Create &ldquo;{query.trim()}&rdquo; on{" "}
+                    {axis.name}
+                  </button>
+                ) : null}
+              </span>
             ) : null}
 
             {matches.length === 0 && query.trim().length === 0 ? (

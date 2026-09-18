@@ -63,6 +63,7 @@ export function PoolClient({
   const [mode, setMode] = useState<PoolMode>("workbench");
   const [sort, setSort] = useState<PoolSort>("manual");
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -186,9 +187,16 @@ export function PoolClient({
           </button>
         </div>
 
-        <label className={styles.searchWrap}>
+        {/* A <div>, not a <label>: a label may not contain interactive content
+            other than its own control, and this one wrapped the clear button.
+            The input carries its own aria-label, so the label element was
+            contributing nothing but the spec violation. Refocusing the field
+            after clearing was the one useful side effect of label activation,
+            so it is now done on purpose rather than as a side effect. */}
+        <div className={styles.searchWrap}>
           <Search size={14} aria-hidden className={styles.searchIcon} />
           <input
+            ref={searchRef}
             className={styles.search}
             value={query}
             placeholder="Search titles and components..."
@@ -199,13 +207,16 @@ export function PoolClient({
             <button
               type="button"
               className={styles.searchClear}
-              onClick={() => setQuery("")}
+              onClick={() => {
+                setQuery("");
+                searchRef.current?.focus();
+              }}
               aria-label="Clear search"
             >
               <X size={13} aria-hidden />
             </button>
           ) : null}
-        </label>
+        </div>
 
         {mode === "workbench" ? (
           <label className={styles.sortWrap}>
