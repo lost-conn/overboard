@@ -98,7 +98,8 @@ export default async function TokensPage() {
       <section className={styles.card}>
         <div className={styles.cardTitle}>Data backup</div>
         <p className={styles.backupHint}>
-          Download all projects, cards, ideas, and tags as a single JSON file.
+          Download all projects, cards, ideas, tags, and your component
+          vocabulary as a single JSON file.
         </p>
         <a className={styles.submit} href="/api/backup" download>
           Download JSON backup

@@ -5,11 +5,15 @@ import styles from "./tokens.module.css";
 
 type Mode = "merge" | "replace";
 
-type ImportCounts = {
+type ImportResult = {
   projects: number;
   cards: number;
   ideas: number;
   tags: number;
+  axes: number;
+  components: number;
+  attachments: number;
+  warnings: string[];
 };
 
 export function RestoreBackup() {
@@ -18,7 +22,7 @@ export function RestoreBackup() {
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ImportCounts | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const replaceReady = mode !== "replace" || confirm.trim() === "REPLACE";
@@ -50,7 +54,7 @@ export function RestoreBackup() {
       if (!res.ok) {
         setError(payload?.error ?? "Import failed.");
       } else {
-        setResult(payload.imported as ImportCounts);
+        setResult(payload.imported as ImportResult);
         setFile(null);
         setConfirm("");
         if (fileInput.current) fileInput.current.value = "";
@@ -103,7 +107,8 @@ export function RestoreBackup() {
             Replace all
             <div className={styles.modeDesc}>
               Deletes all your current projects, ideas, and tags first, then
-              imports. There is no undo.
+              imports. Your axes and components go too, but only when the
+              backup is new enough to restore them. There is no undo.
             </div>
           </span>
         </label>
@@ -125,8 +130,16 @@ export function RestoreBackup() {
       {result ? (
         <div className={styles.result}>
           Imported {result.projects} projects, {result.cards} cards,{" "}
-          {result.ideas} ideas, {result.tags} new tags.
+          {result.ideas} ideas, {result.tags} new tags, {result.axes} new axes,{" "}
+          {result.components} new components, {result.attachments} decompositions.
         </div>
+      ) : null}
+      {result && result.warnings.length > 0 ? (
+        <ul className={styles.warnings}>
+          {result.warnings.map((w) => (
+            <li key={w}>{w}</li>
+          ))}
+        </ul>
       ) : null}
       {error ? <div className={styles.error}>{error}</div> : null}
     </form>
