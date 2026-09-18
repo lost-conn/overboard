@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, Pencil, Plus, X } from "lucide-react";
+import { ArrowLeft, Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import type {
   ConceptDecomposition,
   ConceptAxisRow,
@@ -21,6 +21,7 @@ import {
   attachComponentAction,
   createAndAddAxisAction,
   createAndAttachComponentAction,
+  deleteComponentAction,
   detachComponentAction,
   removeConceptAxisAction,
   updateComponentAction,
@@ -120,9 +121,11 @@ export function ConceptBoard({
                 <AxisRow
                   key={axis.axisId}
                   conceptId={conceptId}
+                  conceptTitle={title}
                   axis={axis}
                   vocabulary={vocabulary}
                   onAttached={announce}
+                  onNote={setPayoff}
                 />
               ))}
             </ul>
@@ -371,14 +374,18 @@ function ConceptNotes({
 
 function AxisRow({
   conceptId,
+  conceptTitle,
   axis,
   vocabulary,
   onAttached,
+  onNote,
 }: {
   conceptId: string;
+  conceptTitle: string;
   axis: ConceptAxisRow;
   vocabulary: VocabularyEntry[];
   onAttached: (outcome: AttachOutcome) => void;
+  onNote: (message: string) => void;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -427,8 +434,10 @@ function AxisRow({
             <ComponentChipItem
               key={c.id}
               conceptId={conceptId}
+              conceptTitle={conceptTitle}
               chip={c}
               axisColor={axis.color}
+              onNote={onNote}
             />
           ))
         )}
@@ -448,17 +457,31 @@ function AxisRow({
 
 function ComponentChipItem({
   conceptId,
+  conceptTitle,
   chip,
   axisColor,
+  onNote,
 }: {
   conceptId: string;
+  conceptTitle: string;
   chip: ComponentChip;
   axisColor: string;
+  onNote: (message: string) => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState(false);
+  // "view" | "edit" | "delete". Edit and delete are both multi-step and must
+  // survive the blur that clicking into them causes, hence the ref below.
+  const [mode, setMode] = useState<"view" | "edit" | "delete">("view");
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Read by the close timer, which would otherwise see whatever `mode` was when
+  // the blur handler was created and shut the popover mid-confirm. Synced in an
+  // effect rather than during render: the timer is 120ms out, so it always
+  // observes the committed value.
+  const busyRef = useRef(false);
+  useEffect(() => {
+    busyRef.current = mode !== "view";
+  }, [mode]);
 
   // Hover *and* keyboard focus, not hover-only. The popover is rendered inside
   // the wrapper so Tab moves naturally into its buttons, and onFocus/onBlur
@@ -470,7 +493,7 @@ function ComponentChipItem({
   const hide = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
     closeTimer.current = setTimeout(() => {
-      if (!editing) setOpen(false);
+      if (!busyRef.current) setOpen(false);
     }, 120);
   };
 
@@ -527,12 +550,24 @@ function ComponentChipItem({
 
       {open ? (
         <span className={styles.popover} id={panelId} role="group" aria-label={chip.name}>
-          {editing ? (
+          {mode === "edit" ? (
             <ComponentEditForm
               conceptId={conceptId}
               chip={chip}
               onDone={() => {
-                setEditing(false);
+                setMode("view");
+                setOpen(false);
+              }}
+            />
+          ) : mode === "delete" ? (
+            <ComponentDeleteConfirm
+              conceptId={conceptId}
+              conceptTitle={conceptTitle}
+              chip={chip}
+              onNote={onNote}
+              onCancel={() => setMode("view")}
+              onDone={() => {
+                setMode("view");
                 setOpen(false);
               }}
             />
@@ -564,7 +599,7 @@ function ComponentChipItem({
                 <button
                   type="button"
                   className={styles.popEdit}
-                  onClick={() => setEditing(true)}
+                  onClick={() => setMode("edit")}
                 >
                   <Pencil size={12} aria-hidden /> Edit everywhere
                 </button>
@@ -577,11 +612,115 @@ function ComponentChipItem({
                   name={chip.name}
                   className={styles.popEdit}
                 />
+
+                {/* The way out. Detach above removes it from this concept;
+                    this removes it from the vocabulary, which is the only
+                    answer to a typo you attached once and regretted. */}
+                <button
+                  type="button"
+                  className={styles.popDelete}
+                  onClick={() => setMode("delete")}
+                >
+                  <Trash2 size={12} aria-hidden /> Delete everywhere
+                </button>
               </span>
             </>
           )}
         </span>
       ) : null}
+    </span>
+  );
+}
+
+/**
+ * Delete confirmation that leads with the blast radius.
+ *
+ * "Used by six concepts" and "used by this one only" are completely different
+ * decisions, so the count and — while the list is short enough to read — the
+ * actual names come before the button, not after it. The names are the point:
+ * recognising one of them is what stops the delete.
+ */
+const NAME_THE_CONCEPTS_UP_TO = 6;
+
+function ComponentDeleteConfirm({
+  conceptId,
+  conceptTitle,
+  chip,
+  onNote,
+  onCancel,
+  onDone,
+}: {
+  conceptId: string;
+  conceptTitle: string;
+  chip: ComponentChip;
+  onNote: (message: string) => void;
+  onCancel: () => void;
+  onDone: () => void;
+}) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  // This concept first — it is the one on screen, so it anchors the rest.
+  const affected = [conceptTitle, ...chip.alsoUsedBy.map((c) => c.title)];
+
+  const remove = () => {
+    setError(null);
+    startTransition(async () => {
+      const result = await deleteComponentAction({ ideaId: conceptId, componentId: chip.id });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      onNote(
+        result.restoredConcept
+          ? `Deleted "${chip.name}". "${result.restoredConcept.title}" was living as that component, so it is back in the idea pool rather than stranded.`
+          : `Deleted "${chip.name}" from your vocabulary.`,
+      );
+      onDone();
+      router.refresh();
+    });
+  };
+
+  return (
+    <span className={styles.deleteConfirm}>
+      <span className={styles.deleteTitle}>Delete &ldquo;{chip.name}&rdquo; everywhere?</span>
+
+      <span className={styles.deleteBody}>
+        {affected.length === 1 ? (
+          <>It is only on this concept, so nothing else changes.</>
+        ) : (
+          <>
+            It comes off {affected.length} concepts
+            {affected.length <= NAME_THE_CONCEPTS_UP_TO ? (
+              <>
+                : <span className={styles.deleteNames}>{affected.join(", ")}</span>
+              </>
+            ) : null}
+            . They keep the axis, so the slot becomes an empty one to fill again.
+          </>
+        )}
+      </span>
+
+      <span className={styles.deleteBody}>
+        To take it off this concept only, use the &times; on the chip instead.
+      </span>
+
+      {error ? <span className={styles.editError}>{error}</span> : null}
+
+      <span className={styles.editActions}>
+        <button
+          type="button"
+          className={styles.deleteGo}
+          onClick={remove}
+          disabled={isPending}
+        >
+          <Trash2 size={12} aria-hidden /> Delete
+        </button>
+        <button type="button" className={styles.editCancel} onClick={onCancel} disabled={isPending}>
+          Cancel
+        </button>
+      </span>
     </span>
   );
 }

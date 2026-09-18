@@ -486,3 +486,122 @@ test("promoting another user's concept is a not-found", async () => {
 
   await assert.rejects(() => ideas.promoteIdea(mine.userId, idea.id), /idea not found/);
 });
+
+/* ---- deleting a component ------------------------------------------------ */
+
+// `deleteComponent` had no callers at all until the vocabulary got a delete
+// button, so none of this was reachable — and the stranding case below would
+// have been a silent, permanent loss the first time anyone used it.
+
+test("deleting a component takes it off every concept and leaves the axes standing", async () => {
+  const s = await scenario();
+  const a = await s.concept("First", ["shared piece", "only mine"]);
+  const b = await s.concept("Second", ["shared piece"]);
+
+  const shared = await db.component.findFirstOrThrow({
+    where: { userId: s.userId, name: "shared piece" },
+  });
+
+  const result = await components.deleteComponent(s.userId, shared.id);
+  assert.equal(result.detachedFrom, 2, "the blast radius is reported, not guessed");
+  assert.equal(result.restoredConcept, null);
+
+  assert.equal(await db.component.count({ where: { userId: s.userId, name: "shared piece" } }), 0);
+  assert.equal(
+    await db.conceptComponent.count({ where: { componentId: shared.id } }),
+    0,
+    "attachments go with it",
+  );
+
+  // Both concepts survive; the first keeps its other component, and both keep
+  // the axis, so the slot becomes a declared gap rather than disappearing.
+  for (const id of [a.id, b.id]) {
+    assert.ok(await db.idea.findUnique({ where: { id } }), "concepts are not deleted");
+    assert.equal(
+      await db.conceptAxis.count({ where: { ideaId: id, axisId: s.axisId } }),
+      1,
+      "the axis row stays, so the gap is still declared",
+    );
+  }
+  assert.equal(
+    await db.conceptComponent.count({ where: { ideaId: a.id } }),
+    1,
+    "the concept's other components are untouched",
+  );
+});
+
+test("deleting an unused component is possible at all — it is on no concept board", async () => {
+  const s = await scenario();
+  const stray = await components.createComponent(s.userId, {
+    axisId: s.axisId,
+    name: "social deduciton",
+  });
+
+  const result = await components.deleteComponent(s.userId, stray.id);
+  assert.equal(result.detachedFrom, 0);
+  assert.equal(await db.component.count({ where: { id: stray.id } }), 0);
+});
+
+test("deleting a demoted concept's twin returns the concept to the pool, not oblivion", async () => {
+  const s = await scenario();
+  const idea = await s.concept("Turned Out To Be A Component", ["a piece"]);
+  const demoted = await ladder.demoteConceptToComponent(s.userId, idea.id, s.axisId);
+
+  // Precondition: it is out of the pool, reachable only through its twin.
+  assert.equal(
+    (await ideaQueries.getIdeasForUser(s.userId)).some((i) => i.id === idea.id),
+    false,
+  );
+
+  const result = await components.deleteComponent(s.userId, demoted.componentId);
+
+  // Idea.mirror is onDelete: SetNull, so without the rescue the row would still
+  // be here with demotedAt set and nothing left to promote it back from —
+  // invisible in the pool, invisible in the vocabulary, gone in every sense
+  // that matters while still occupying a row.
+  assert.deepEqual(result.restoredConcept, { id: idea.id, title: "Turned Out To Be A Component" });
+
+  const row = await db.idea.findUniqueOrThrow({ where: { id: idea.id } });
+  assert.equal(row.demotedAt, null, "the concept must come back rather than be stranded");
+  assert.equal(row.mirrorComponentId, null, "and it has no twin any more");
+  assert.equal(
+    (await ideaQueries.getIdeasForUser(s.userId)).some((i) => i.id === idea.id),
+    true,
+    "it is visible in the pool again",
+  );
+});
+
+test("deleting a live concept's twin leaves the concept exactly where it was", async () => {
+  const s = await scenario();
+  const component = await components.createComponent(s.userId, {
+    axisId: s.axisId,
+    name: "worth its own concept",
+  });
+  const { conceptId } = await ladder.promoteComponentToConcept(s.userId, component.id);
+
+  const result = await components.deleteComponent(s.userId, component.id);
+  assert.equal(
+    result.restoredConcept,
+    null,
+    "a concept that was never demoted has nothing to be rescued from",
+  );
+
+  const row = await db.idea.findUniqueOrThrow({ where: { id: conceptId } });
+  assert.equal(row.demotedAt, null);
+  assert.equal(row.mirrorComponentId, null);
+});
+
+test("deleting another user's component is a not-found", async () => {
+  const mine = await scenario();
+  const theirs = await scenario();
+  const component = await components.createComponent(theirs.userId, {
+    axisId: theirs.axisId,
+    name: "not yours",
+  });
+
+  await assert.rejects(
+    () => components.deleteComponent(mine.userId, component.id),
+    /component not found/,
+  );
+  assert.equal(await db.component.count({ where: { id: component.id } }), 1);
+});

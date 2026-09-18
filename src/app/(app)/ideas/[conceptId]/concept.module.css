@@ -394,6 +394,57 @@
   border-color: var(--text-dim);
 }
 
+/* Destructive, so it reads as destructive — but only on hover/focus, so the
+   popover isn't shouting a warning at someone who opened it to read a
+   description. */
+.popDelete {
+  composes: popEdit;
+}
+
+.popDelete:hover,
+.popDelete:focus-visible {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ---- component delete --------------------------------------------------- */
+
+.deleteConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.deleteTitle {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.deleteBody {
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+/* The names are the part that stops the delete, so they get the foreground. */
+.deleteNames {
+  color: var(--text);
+}
+
+.deleteGo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--surface);
+  background: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+}
+
 /* ---- component edit ----------------------------------------------------- */
 
 .editForm {
@@ -918,6 +969,8 @@
   .comboCreate,
   .axisOption,
   .popEdit,
+  .popDelete,
+  .deleteGo,
   .editSave,
   .editCancel,
   .addAxisBtn,

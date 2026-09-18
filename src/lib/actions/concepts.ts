@@ -149,6 +149,37 @@ export async function updateComponentAction(args: {
   }
 }
 
+/**
+ * Delete a component from the vocabulary, everywhere.
+ *
+ * Distinct from detach, which only removes it from one concept. This is the way
+ * out for a typo or a one-off nobody wants — without it the vocabulary only
+ * accumulates, and a cluttered vocabulary is what makes people type a new name
+ * instead of reusing the one they already have.
+ *
+ * `revalidatePath("/settings/axes")` as well because the vocabulary list there
+ * is the only surface that can reach a component attached to nothing.
+ */
+export async function deleteComponentAction(args: {
+  componentId: string;
+  /** The concept whose board the delete was triggered from, if any. */
+  ideaId?: string;
+}): Promise<
+  | { ok: true; detachedFrom: number; restoredConcept: { id: string; title: string } | null }
+  | { ok: false; error: string }
+> {
+  const userId = await requireUserId();
+  try {
+    const result = await components.deleteComponent(userId, args.componentId);
+    if (args.ideaId) revalidateConcept(args.ideaId);
+    else revalidatePath("/ideas");
+    revalidatePath("/settings/axes");
+    return { ok: true, ...result };
+  } catch (err) {
+    return toError(err) ?? rethrow(err);
+  }
+}
+
 export async function addConceptAxisAction(args: {
   ideaId: string;
   axisId: string;

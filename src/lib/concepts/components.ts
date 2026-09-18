@@ -57,6 +57,13 @@ export type ComponentRow = {
   axisColor: string;
   /** How many concepts use this component. */
   usageCount: number;
+  /**
+   * The concepts using it, by name. Carried alongside the count because
+   * "delete this, it comes off 4 concepts" and "delete this, it comes off
+   * Friendslop Lost" are different decisions, and only the second one can be
+   * recognised as a mistake before it is made.
+   */
+  usedBy: ConceptRef[];
 };
 
 type ComponentWithAxis = {
@@ -65,6 +72,7 @@ type ComponentWithAxis = {
   description: string | null;
   axisId: string;
   axis: { name: string; color: string | null };
+  concepts: { idea: ConceptRef }[];
   _count: { concepts: number };
 };
 
@@ -77,15 +85,26 @@ function toRow(c: ComponentWithAxis): ComponentRow {
     axisName: c.axis.name,
     axisColor: c.axis.color ?? deriveTagColor(c.axis.name.toLowerCase()),
     usageCount: c._count.concepts,
+    usedBy: c.concepts.map((cc) => cc.idea),
   };
 }
 
 const WITH_AXIS = {
   axis: { select: { name: true, color: true } },
+  concepts: {
+    orderBy: { idea: { title: "asc" } },
+    select: { idea: { select: { id: true, title: true } } },
+  },
   _count: { select: { concepts: true } },
 } as const;
 
-/** Every component in the user's vocabulary, axis-major then name. */
+/**
+ * Every component in the user's vocabulary, axis-major then name.
+ *
+ * Deliberately not filtered by usage: a component attached to nothing appears
+ * on no concept board, so this list is the only place it can be seen — or
+ * deleted. That is the whole point of having it.
+ */
 export async function listComponents(userId: string): Promise<ComponentRow[]> {
   const rows = await db.component.findMany({
     where: { userId },
@@ -228,14 +247,63 @@ export async function updateComponent(
   return toRow(updated);
 }
 
-export async function deleteComponent(userId: string, id: string): Promise<void> {
+export type DeleteComponentResult = {
+  /** Concepts that lost a chip. The blast radius, after the fact. */
+  detachedFrom: number;
+  /**
+   * A demoted concept that was pulled back into the pool because the component
+   * it was living as has just been deleted. Null in every other case.
+   */
+  restoredConcept: ConceptRef | null;
+};
+
+/**
+ * Delete a component from the vocabulary entirely.
+ *
+ * It comes off every concept using it — `ConceptComponent` cascades — but each
+ * concept keeps the axis row, so what was a filled slot becomes a declared gap
+ * rather than the axis silently disappearing. An axis left with no components
+ * is fine and is not cleaned up: the user declared it, and an empty axis is a
+ * statement about what they still intend to fill.
+ *
+ * The one case that needs care is a demoted concept's twin. `Idea.mirror` is
+ * `onDelete: SetNull`, so deleting the component would leave the concept
+ * demoted — hidden from the pool by `demotedAt` — with nothing left to promote
+ * it back from. It would still be a row, reachable only by a URL nobody has.
+ * So the concept is returned to the pool instead, and the caller is told, which
+ * keeps the ladder's promise that no move destroys anything.
+ */
+export async function deleteComponent(
+  userId: string,
+  id: string,
+): Promise<DeleteComponentResult> {
   const existing = await db.component.findFirst({
     where: { id, userId },
-    select: { id: true },
+    select: {
+      id: true,
+      _count: { select: { concepts: true } },
+      mirrorConcept: { select: { id: true, title: true, demotedAt: true } },
+    },
   });
   if (!existing) throw new NotFoundError("component not found");
-  await db.component.delete({ where: { id } });
+
+  const stranded =
+    existing.mirrorConcept && existing.mirrorConcept.demotedAt !== null
+      ? { id: existing.mirrorConcept.id, title: existing.mirrorConcept.title }
+      : null;
+
+  await db.$transaction(async (tx) => {
+    if (stranded) {
+      await tx.idea.update({
+        where: { id: stranded.id },
+        data: { demotedAt: null },
+      });
+    }
+    await tx.component.delete({ where: { id } });
+  });
+
   emitIdeas(userId);
+  return { detachedFrom: existing._count.concepts, restoredConcept: stranded };
 }
 
 async function requireIdea(userId: string, ideaId: string): Promise<{ id: string }> {

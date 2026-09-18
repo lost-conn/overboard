@@ -16,10 +16,11 @@ function revalidateAxisPaths(): void {
   revalidatePath("/ideas");
 }
 
-export async function listAxesAction(): Promise<axes.AxisRow[]> {
-  const userId = await requireUserId();
-  return axes.listAxes(userId);
-}
+// `listAxesAction()` used to live here with no client importing it —
+// /settings/axes/page.tsx calls `listAxes` server-side directly, which is both
+// simpler and one fewer round trip. Removed rather than kept: every exported
+// `"use server"` function is a callable POST endpoint whether or not anything
+// calls it, so an unused one is surface area for nothing.
 
 // The axis editor needs visible errors — a duplicate name is the realistic one —
 // so this follows the {ok, error} shape from saveClassAction rather than the

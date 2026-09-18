@@ -103,11 +103,11 @@ export async function listAxes(userId: string): Promise<AxisRow[]> {
   return rows.map(toRow);
 }
 
-export async function getAxis(userId: string, id: string): Promise<AxisRow> {
-  const row = await db.axis.findFirst({ where: { id, userId }, include: COUNTS });
-  if (!row) throw new NotFoundError("axis not found");
-  return toRow(row);
-}
+// `getAxis(userId, id)` used to live here with no callers. Removed rather than
+// wired up: nothing in the app needs one axis by id and its counts. Every path
+// that touches a single axis either works from the `listAxes` result it already
+// has, or does its own `findFirst({ id, userId })` ownership check inline
+// because it is about to write.
 
 /**
  * Find an axis by name for this user, case-insensitively. SQLite's default

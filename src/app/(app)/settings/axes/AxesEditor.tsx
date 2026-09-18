@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { AxisRow } from "@/lib/concepts/axes";
+import type { ComponentRow } from "@/lib/concepts/components";
 import {
   deleteAxisAction,
   reorderAxesAction,
   saveAxisAction,
 } from "@/lib/actions/axes";
+import { deleteComponentAction } from "@/lib/actions/concepts";
 import { MAX_AXIS_NAME_LEN, MAX_DESCRIPTION_LEN } from "@/lib/concepts/normalize";
 import styles from "./axes.module.css";
 
@@ -16,7 +18,13 @@ import styles from "./axes.module.css";
 // front, so these are one click each and nothing is created until they say so.
 const SUGGESTIONS = ["Mechanic", "Setting", "Tone", "Structure", "Material", "Premise"];
 
-export function AxesEditor({ axes }: { axes: AxisRow[] }) {
+export function AxesEditor({
+  axes,
+  components,
+}: {
+  axes: AxisRow[];
+  components: ComponentRow[];
+}) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [prefillName, setPrefillName] = useState("");
@@ -24,6 +32,16 @@ export function AxesEditor({ axes }: { axes: AxisRow[] }) {
   const [isPending, startTransition] = useTransition();
 
   const existingNames = axes.map((a) => a.name);
+
+  const componentsByAxis = useMemo(() => {
+    const map = new Map<string, ComponentRow[]>();
+    for (const c of components) {
+      const list = map.get(c.axisId) ?? [];
+      list.push(c);
+      map.set(c.axisId, list);
+    }
+    return map;
+  }, [components]);
 
   const handleDelete = (axis: AxisRow) => {
     // Deleting an axis takes its components with it, and those components are
@@ -45,6 +63,43 @@ export function AxesEditor({ axes }: { axes: AxisRow[] }) {
       if (!result.ok) {
         setError(result.error);
         return;
+      }
+      router.refresh();
+    });
+  };
+
+  // The blast radius, before the decision. A component used six times and one
+  // used never are the same two clicks otherwise, and only one of them is safe.
+  const handleDeleteComponent = (component: ComponentRow) => {
+    const names = component.usedBy.map((c) => c.title);
+    const where =
+      names.length === 0
+        ? "Nothing uses it — it is attached to no concept at all."
+        : `${
+            names.length <= 6
+              ? `It comes off ${names.length} concept${names.length === 1 ? "" : "s"}: ${names.join(", ")}.`
+              : `It comes off ${names.length} concepts.`
+          }\n\nThey keep the "${component.axisName}" axis, so the slot becomes an empty one to fill again.`;
+
+    if (
+      !confirm(`Delete the component "${component.name}"?\n\n${where}\n\nThis cannot be undone.`)
+    ) {
+      return;
+    }
+
+    setError(null);
+    startTransition(async () => {
+      const result = await deleteComponentAction({ componentId: component.id });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      if (result.restoredConcept) {
+        // Deleting a demoted concept's twin would otherwise strand it: hidden
+        // from the pool, with nothing left to promote it back from.
+        alert(
+          `"${result.restoredConcept.title}" was living as that component, so it has been put back in the idea pool rather than left stranded.`,
+        );
       }
       router.refresh();
     });
@@ -131,6 +186,13 @@ export function AxesEditor({ axes }: { axes: AxisRow[] }) {
                     {axis.componentCount} component{axis.componentCount === 1 ? "" : "s"} ·{" "}
                     on {axis.conceptCount} concept{axis.conceptCount === 1 ? "" : "s"}
                   </div>
+
+                  <ComponentList
+                    axisName={axis.name}
+                    components={componentsByAxis.get(axis.id) ?? []}
+                    disabled={isPending}
+                    onDelete={handleDeleteComponent}
+                  />
                 </div>
 
                 <div className={styles.cardActions}>
@@ -200,6 +262,59 @@ export function AxesEditor({ axes }: { axes: AxisRow[] }) {
         </button>
       )}
     </>
+  );
+}
+
+/**
+ * The components filed under one axis.
+ *
+ * Unused ones are called out rather than hidden. Decomposition is exactly the
+ * activity that produces a "social deduciton" attached once and regretted, and
+ * an unused component is both the most likely mistake and the only one that is
+ * completely safe to remove — so it should be the easiest to find.
+ */
+function ComponentList({
+  axisName,
+  components,
+  disabled,
+  onDelete,
+}: {
+  axisName: string;
+  components: ComponentRow[];
+  disabled: boolean;
+  onDelete: (component: ComponentRow) => void;
+}) {
+  if (components.length === 0) {
+    return (
+      <p className={styles.componentsEmpty}>
+        No components on this axis yet — they appear here as you add them from a concept.
+      </p>
+    );
+  }
+
+  return (
+    <ul className={styles.componentList} aria-label={`Components on ${axisName}`}>
+      {components.map((c) => (
+        <li className={styles.componentItem} key={c.id}>
+          <span className={styles.componentName}>{c.name}</span>
+          <span className={c.usageCount === 0 ? styles.componentUnused : styles.componentUsage}>
+            {c.usageCount === 0
+              ? "unused"
+              : `used by ${c.usageCount} concept${c.usageCount === 1 ? "" : "s"}`}
+          </span>
+          <button
+            type="button"
+            className={styles.componentDelete}
+            onClick={() => onDelete(c)}
+            disabled={disabled}
+            aria-label={`Delete the component ${c.name}`}
+            title="Delete from your vocabulary"
+          >
+            Delete
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
