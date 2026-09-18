@@ -13,14 +13,17 @@ import {
   normalizeComponentName,
 } from "@/lib/concepts/normalize";
 
-// Import counterpart to the backup export in src/app/api/backup/route.ts.
+// Import counterpart to the backup export in src/lib/backup.ts.
 // The backup file is user-scoped data only (projects, cards, ideas, tags,
 // classes, and the component vocabulary). Not covered, by design: ProjectShare
 // (never exported) and card assignees (they reference other users, so we drop
 // them on import).
 
 // v1: projects, cards, ideas, tags, classes.
-// v2: adds axes, components, and each concept's decomposition.
+// v2: adds axes, components, each concept's decomposition, and the promotion
+//     ladder links. The ladder fields are additive within v2 (see
+//     BACKUP_VERSION in backup.ts): an older v2 file carries none of them and
+//     restores exactly as it always did.
 //
 // The version is load-bearing on restore, not decoration. Both concept joins
 // cascade off Idea, so a replace restore deletes every axis assignment and
@@ -68,6 +71,9 @@ export type BackupCard = {
 };
 
 export type BackupProject = {
+  // Original project id from the export. Not written on import — kept only to
+  // remap a concept's `projectId` (the promotion link) onto the fresh row.
+  id: string | null;
   name: string;
   priority: number;
   archived: boolean;
@@ -104,6 +110,15 @@ export type BackupIdea = {
   // vocabulary has been resolved against this user's existing rows.
   axes: { axisId: string; order: number }[];
   components: { componentId: string; order: number }[];
+  // The promotion ladder, all three remapped rather than written as-is.
+  // `projectId` points at a project in this same backup; `mirrorComponentId`
+  // at a component in its vocabulary. `demotedAt` is what keeps a concept that
+  // is currently living as a component hidden from the pool — without it the
+  // concept and its mirror component both come back visible, which is one
+  // thing wearing two hats and no way to tell.
+  projectId: string | null;
+  mirrorComponentId: string | null;
+  demotedAt: string | null;
 };
 
 export type BackupTag = {
@@ -368,6 +383,7 @@ export function parseBackup(raw: unknown): Backup {
     if (!Array.isArray(rawCards)) throw new ValidationError(`projects[${i}].cards must be an array`);
     const { omnipresent, classIds } = parseProjectSchedule(p, `projects[${i}]`);
     return {
+      id: asStringOrNull(p.id, `projects[${i}].id`),
       name: asString(p.name, `projects[${i}].name`, MAX_PROJECT_NAME),
       priority: asInt(p.priority ?? 1, `projects[${i}].priority`),
       archived: p.archived === true,
@@ -420,6 +436,11 @@ export function parseBackup(raw: unknown): Backup {
         componentId: r.id,
         order: r.order,
       })),
+      // Absent on backups written before the promotion ladder: default to a
+      // plain, never-promoted, never-demoted concept.
+      projectId: asStringOrNull(idea.projectId, `${where}.projectId`),
+      mirrorComponentId: asStringOrNull(idea.mirrorComponentId, `${where}.mirrorComponentId`),
+      demotedAt: asDateOrNull(idea.demotedAt, `${where}.demotedAt`),
     };
   });
 
@@ -653,6 +674,10 @@ export async function importBackup(
       );
     }
 
+    // old (backup) project id -> new id, so a concept's promotion link can
+    // point at the project it actually became rather than at a stale id.
+    const projectIdMap = new Map<string, string>();
+
     for (const p of backup.projects) {
       // Remap each classId old -> new via the class-name resolution above.
       // A referenced class not in this backup (e.g. a partial/edited
@@ -673,6 +698,7 @@ export async function importBackup(
         select: { id: true },
       });
       counts.projects += 1;
+      if (p.id) projectIdMap.set(p.id, project.id);
 
       if (remappedClassIds.length > 0) {
         await tx.projectClassLink.createMany({
@@ -727,7 +753,44 @@ export async function importBackup(
       }
     }
 
+    // Idea.projectId and Idea.mirrorComponentId are both @unique — one concept
+    // per project, one concept per component twin. On a merge the target
+    // account may already have a concept mirroring a component this backup also
+    // claims (components are merged by name, so it is the *same* row), and a
+    // hand-edited file could name the same target twice. Either would abort the
+    // whole transaction on a constraint violation, so claims are tracked and a
+    // second claimant simply comes back unlinked rather than not at all.
+    const claimedMirrors = new Set<string>();
+    const claimedProjects = new Set<string>();
+    const existingMirrors = await tx.idea.findMany({
+      where: { userId, mirrorComponentId: { not: null } },
+      select: { mirrorComponentId: true },
+    });
+    for (const m of existingMirrors) {
+      if (m.mirrorComponentId) claimedMirrors.add(m.mirrorComponentId);
+    }
+    let unlinkedMirrors = 0;
+
     for (const idea of backup.ideas) {
+      // The ladder links, remapped onto this import's fresh rows. Unresolvable
+      // references are dropped rather than pointed at nothing, same as classIds.
+      let projectId = idea.projectId ? (projectIdMap.get(idea.projectId) ?? null) : null;
+      if (projectId && claimedProjects.has(projectId)) projectId = null;
+
+      let mirrorComponentId = idea.mirrorComponentId
+        ? (componentIdMap.get(idea.mirrorComponentId) ?? null)
+        : null;
+      if (mirrorComponentId && claimedMirrors.has(mirrorComponentId)) {
+        mirrorComponentId = null;
+        unlinkedMirrors += 1;
+      }
+
+      // A concept is only still demoted if it still has the component it was
+      // demoted into. Restoring demotedAt without the twin would hide the
+      // concept from the pool with no component offering the way back — it
+      // would simply be gone from every view the app has.
+      const demotedAt = mirrorComponentId && idea.demotedAt ? new Date(idea.demotedAt) : null;
+
       const created = await tx.idea.create({
         data: {
           userId,
@@ -735,10 +798,15 @@ export async function importBackup(
           title: idea.title,
           contentJson: idea.contentJson,
           contentMd: idea.contentMd,
+          projectId,
+          mirrorComponentId,
+          demotedAt,
           ...(idea.createdAt ? { createdAt: new Date(idea.createdAt) } : {}),
         },
         select: { id: true },
       });
+      if (projectId) claimedProjects.add(projectId);
+      if (mirrorComponentId) claimedMirrors.add(mirrorComponentId);
       counts.ideas += 1;
       if (idea.tags.length > 0) {
         await tx.ideaTag.createMany({
@@ -795,6 +863,14 @@ export async function importBackup(
         });
         counts.attachments += attachedComponents.length;
       }
+    }
+
+    if (unlinkedMirrors > 0) {
+      warnings.push(
+        `${unlinkedMirrors} concepts came back without their component twin, because the ` +
+          `component was already twinned with a concept in this account. They are ordinary ` +
+          `concepts now — nothing was lost, but the link between the two halves was.`,
+      );
     }
   });
 
