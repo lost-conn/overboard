@@ -26,10 +26,12 @@ export async function createIdeaAction(formData: FormData): Promise<void> {
   revalidatePath("/ideas");
 }
 
+// Each caller sends only the field it owns. Omitting a field leaves it
+// untouched; passing null clears it.
 export async function updateIdeaAction(args: {
   id: string;
-  title: string;
-  contentJson: string | null;
+  title?: string;
+  contentJson?: string | null;
 }): Promise<void> {
   const userId = await requireUserId();
   try {

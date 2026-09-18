@@ -45,17 +45,21 @@ export async function createIdea(
   return idea;
 }
 
-// undefined = leave field unchanged; null = clear it.
+// undefined = leave field unchanged; null = clear it. This applies to `title`
+// as much as to the body fields: the concept board has two independent writers
+// (the title input and the notes autosave) and each must send only the field it
+// owns. A writer that echoed back its stale copy of the other's field would
+// silently revert the other's edits.
 export async function updateIdea(
   userId: string,
   args: {
     id: string;
-    title: string;
+    title?: string;
     contentJson?: string | null;
     contentMd?: string | null;
   },
 ): Promise<Idea> {
-  const title = trimTitle(args.title, 200);
+  const title = args.title !== undefined ? trimTitle(args.title, 200) : undefined;
   const idea = await db.idea.findFirst({
     where: { id: args.id, userId },
     select: { id: true },
@@ -64,7 +68,7 @@ export async function updateIdea(
   const updated = await db.idea.update({
     where: { id: idea.id },
     data: {
-      title,
+      ...(title !== undefined ? { title } : {}),
       ...(args.contentJson !== undefined ? { contentJson: args.contentJson } : {}),
       ...(args.contentMd !== undefined ? { contentMd: args.contentMd } : {}),
     },

@@ -53,8 +53,17 @@ export function overlapScore(concept: PoolLike, all: PoolLike[]): number {
  * Ties always fall back to title so the order is stable and doesn't shuffle
  * between renders — particularly visible in "fewest components", where a fresh
  * pool is mostly zeroes.
+ *
+ * `universe` is the population overlap is scored against, and defaults to the
+ * list being sorted. Callers showing a filtered view should pass the whole pool:
+ * overlap is a property of the pool, so scoring against the filtered view would
+ * sort the cards in an order the per-card `overlap N` badges contradict.
  */
-export function sortPool<T extends PoolLike>(concepts: T[], sort: PoolSort): T[] {
+export function sortPool<T extends PoolLike>(
+  concepts: T[],
+  sort: PoolSort,
+  universe: PoolLike[] = concepts,
+): T[] {
   const out = [...concepts];
   const byTitle = (a: T, b: T) => a.title.localeCompare(b.title);
 
@@ -70,7 +79,7 @@ export function sortPool<T extends PoolLike>(concepts: T[], sort: PoolSort): T[]
     case "fewest":
       return out.sort((a, b) => a.componentCount - b.componentCount || byTitle(a, b));
     case "overlap": {
-      const scores = new Map(concepts.map((c) => [c.id, overlapScore(c, concepts)]));
+      const scores = new Map(concepts.map((c) => [c.id, overlapScore(c, universe)]));
       return out.sort(
         (a, b) => (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0) || byTitle(a, b),
       );

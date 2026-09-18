@@ -127,7 +127,9 @@ export function PoolClient({
   const dndEnabled =
     mode === "workbench" && sort === "manual" && !filterActive && query.trim().length === 0;
 
-  const displayed = useMemo(() => sortPool(visible, sort), [visible, sort]);
+  // Scored against `local`, not `visible`, so the sort order agrees with the
+  // per-card `overlap N` badges, which are also computed over the whole pool.
+  const displayed = useMemo(() => sortPool(visible, sort, local), [visible, sort, local]);
 
   // Pairs are computed over the whole pool, not the filtered view: "what
   // completes what" is a property of the pool, and hiding pairs because of an
@@ -140,10 +142,17 @@ export function PoolClient({
     if (!dndEnabled) return;
     const { active, over } = e;
     if (!over || active.id === over.id) return;
-    const oldIdx = local.findIndex((i) => i.id === active.id);
-    const newIdx = local.findIndex((i) => i.id === over.id);
+    // Index against what is actually on screen. `displayed` is `sortPool(local,
+    // "manual")`, which breaks `order` ties by title — so on a tie the nth card
+    // in `local` is not the nth card the user sees, and the drag would move a
+    // different card than the one grabbed. dndEnabled guarantees `displayed`
+    // holds the whole pool, so the id list below is still complete.
+    const oldIdx = displayed.findIndex((i) => i.id === active.id);
+    const newIdx = displayed.findIndex((i) => i.id === over.id);
     if (oldIdx < 0 || newIdx < 0) return;
-    const next = arrayMove(local, oldIdx, newIdx);
+    // Renumber to match what the server is about to store, so the optimistic
+    // echo survives the re-sort instead of snapping back until the refresh.
+    const next = arrayMove(displayed, oldIdx, newIdx).map((c, i) => ({ ...c, order: i }));
     setLocal(next);
     void reorderIdeasAction(next.map((i) => i.id));
   };

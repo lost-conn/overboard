@@ -87,6 +87,37 @@ test("sortPool overlap ranks the entangled pair above the rest", () => {
   assert.deepEqual(out.slice(0, 2).map((c) => c.id).sort(), ["f", "k"]);
 });
 
+// A filtered view must still be scored against the whole pool, because the
+// per-card `overlap N` badge is. Scoring against the filtered slice made the
+// sort order contradict the numbers rendered on the cards themselves.
+test("sortPool overlap scores against the given universe, not the filtered slice", () => {
+  // Filtered down to Keep Talking and the lone card-pattern concept. Within
+  // that slice nothing is shared, so both score 0 and title breaks the tie,
+  // putting "Card-pattern puzzle game" first.
+  const filtered = [keepTalking, cards];
+  assert.deepEqual(
+    sortPool(filtered, "overlap").map((c) => c.id),
+    ["c", "k"],
+    "without a universe the slice scores itself and ties break on title",
+  );
+
+  // Against the whole pool Keep Talking still overlaps Friendslop by 3, so it
+  // must outrank the concept that shares nothing — matching its badge.
+  assert.deepEqual(
+    sortPool(filtered, "overlap", pool).map((c) => c.id),
+    ["k", "c"],
+  );
+  assert.equal(overlapScore(keepTalking, pool), 3);
+  assert.equal(overlapScore(cards, pool), 0);
+});
+
+test("sortPool universe defaults to the list being sorted", () => {
+  assert.deepEqual(
+    sortPool(pool, "overlap", pool).map((c) => c.id),
+    sortPool(pool, "overlap").map((c) => c.id),
+  );
+});
+
 test("sortPool ties break on title so the order is stable", () => {
   const a = concept("a", "Zebra", []);
   const b = concept("b", "Alpha", []);

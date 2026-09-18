@@ -216,10 +216,12 @@ export async function updateComponent(
   // never declared, so re-establish the invariant for every concept using it.
   if (data.axisId !== undefined) {
     const users = await db.conceptComponent.findMany({
-      where: { componentId: id },
+      // Scoped by owner for the same reason listComponentUsage is: ensureConceptAxis
+      // writes, so an unscoped read here would be a write predicate in disguise.
+      where: { componentId: id, idea: { userId } },
       select: { ideaId: true },
     });
-    for (const u of users) await ensureConceptAxis(u.ideaId, data.axisId);
+    for (const u of users) await ensureConceptAxis(userId, u.ideaId, data.axisId);
   }
 
   emitIdeas(userId);
@@ -246,15 +248,30 @@ async function requireIdea(userId: string, ideaId: string): Promise<{ id: string
  * The invariant: a concept that uses a component always declares that
  * component's axis. Without this a chip would render under an axis row the
  * concept doesn't have, or vanish entirely.
+ *
+ * `ConceptAxis` has no userId column of its own, so ownership can only come
+ * from a relation predicate. This helper writes, and takes `userId` rather than
+ * trusting callers to have checked: every call site does check today, but that
+ * makes it safe by argument rather than by construction, and a future caller
+ * passing a raw id would silently link one user's concept to another's axis.
  */
-async function ensureConceptAxis(ideaId: string, axisId: string): Promise<void> {
+async function ensureConceptAxis(
+  userId: string,
+  ideaId: string,
+  axisId: string,
+): Promise<void> {
+  const owned = await db.axis.findFirst({
+    where: { id: axisId, userId },
+    select: { id: true },
+  });
+  if (!owned) throw new NotFoundError("axis not found");
   const existing = await db.conceptAxis.findUnique({
     where: { ideaId_axisId: { ideaId, axisId } },
     select: { ideaId: true },
   });
   if (existing) return;
   const max = await db.conceptAxis.findFirst({
-    where: { ideaId },
+    where: { ideaId, idea: { userId } },
     orderBy: { order: "desc" },
     select: { order: true },
   });
@@ -289,7 +306,7 @@ export async function attachComponent(
   });
   if (!component) throw new NotFoundError("component not found");
 
-  await ensureConceptAxis(idea.id, component.axisId);
+  await ensureConceptAxis(userId, idea.id, component.axisId);
 
   const existing = await db.conceptComponent.findUnique({
     where: { ideaId_componentId: { ideaId: idea.id, componentId: component.id } },
@@ -336,7 +353,7 @@ export async function addConceptAxis(
   const idea = await requireIdea(userId, ideaId);
   const axis = await db.axis.findFirst({ where: { id: axisId, userId }, select: { id: true } });
   if (!axis) throw new NotFoundError("axis not found");
-  await ensureConceptAxis(idea.id, axis.id);
+  await ensureConceptAxis(userId, idea.id, axis.id);
   emitIdeas(userId);
 }
 

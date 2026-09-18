@@ -88,7 +88,7 @@ export function ConceptBoard({
         <Link href="/ideas" className={styles.back}>
           <ArrowLeft size={14} aria-hidden /> Idea pool
         </Link>
-        <ConceptTitle conceptId={conceptId} title={title} contentJson={contentJson} />
+        <ConceptTitle conceptId={conceptId} title={title} />
         <div className={styles.tagRow}>
           <ConceptTags conceptId={conceptId} tags={tags} allTags={allTags} />
         </div>
@@ -145,7 +145,7 @@ export function ConceptBoard({
 
         <section className={styles.notes} aria-label="Notes">
           <h2 className={styles.sectionTitle}>Notes</h2>
-          <ConceptNotes conceptId={conceptId} title={title} contentJson={contentJson} />
+          <ConceptNotes conceptId={conceptId} contentJson={contentJson} />
         </section>
       </div>
     </>
@@ -212,19 +212,14 @@ function OverlapPanel({ partners }: { partners: OverlapPartner[] }) {
 
 /* ---- title ------------------------------------------------------------- */
 
-function ConceptTitle({
-  conceptId,
-  title,
-  contentJson,
-}: {
-  conceptId: string;
-  title: string;
-  contentJson: Record<string, unknown> | null;
-}) {
+function ConceptTitle({ conceptId, title }: { conceptId: string; title: string }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
   const [isPending, startTransition] = useTransition();
+  // Enter fires save() and then blurs the input, which fires save() again.
+  // Same shape as NewConceptButton, which guards it the same way.
+  const submittingRef = useRef(false);
 
   // No effect mirroring `title` into `draft`: the draft only matters while
   // editing, so it is seeded at the moment editing starts.
@@ -234,19 +229,23 @@ function ConceptTitle({
   };
 
   const save = () => {
+    if (submittingRef.current) return;
     const next = draft.trim();
     setEditing(false);
     if (next.length === 0 || next === title) {
       setDraft(title);
       return;
     }
+    submittingRef.current = true;
     startTransition(async () => {
-      await updateIdeaAction({
-        id: conceptId,
-        title: next,
-        contentJson: contentJson ? JSON.stringify(contentJson) : null,
-      });
-      router.refresh();
+      try {
+        // Only the title. Echoing back this component's server-render copy of
+        // contentJson would revert every note edit made since page load.
+        await updateIdeaAction({ id: conceptId, title: next });
+        router.refresh();
+      } finally {
+        submittingRef.current = false;
+      }
     });
   };
 
@@ -324,11 +323,9 @@ function ConceptTags({
 
 function ConceptNotes({
   conceptId,
-  title,
   contentJson,
 }: {
   conceptId: string;
-  title: string;
   contentJson: Record<string, unknown> | null;
 }) {
   const jsonRef = useRef<Record<string, unknown> | null>(contentJson);
@@ -345,9 +342,10 @@ function ConceptNotes({
     setSaved(false);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
+      // Only the body. Sending `title` here would revert a rename that landed
+      // after this component was rendered.
       void updateIdeaAction({
         id: conceptId,
-        title,
         contentJson: jsonRef.current ? JSON.stringify(jsonRef.current) : null,
       }).then(() => setSaved(true));
     }, 800);
@@ -928,8 +926,13 @@ function AddAxisControl({
   const [isPending, startTransition] = useTransition();
 
   const add = (axisId: string) => {
+    setError(null);
     startTransition(async () => {
-      await addConceptAxisAction({ ideaId: conceptId, axisId });
+      const result = await addConceptAxisAction({ ideaId: conceptId, axisId });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
       setOpen(false);
       router.refresh();
     });
