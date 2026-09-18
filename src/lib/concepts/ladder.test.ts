@@ -605,3 +605,254 @@ test("deleting another user's component is a not-found", async () => {
   );
   assert.equal(await db.component.count({ where: { id: component.id } }), 1);
 });
+
+/* ---- merging a component ------------------------------------------------- */
+
+// Delete is the wrong answer to the most common mistake in a vocabulary. A
+// typo should usually *become* the thing it was meant to be — deleting it
+// silently drops the overlap it was carrying, which is the one thing
+// decomposition exists to produce. These check that the overlap survives the
+// correction, and that the primary key on ConceptComponent doesn't.
+
+/** A user whose vocabulary contains a typo and the word it was meant to be. */
+async function typoScenario() {
+  const s = await scenario();
+  async function pair() {
+    const from = await db.component.findFirstOrThrow({
+      where: { userId: s.userId, name: "social deduciton" },
+    });
+    const into = await db.component.findFirstOrThrow({
+      where: { userId: s.userId, name: "social deduction" },
+    });
+    return { from, into };
+  }
+  return { ...s, pair };
+}
+
+test("merging moves a concept that only had the typo onto the survivor, in the same slot", async () => {
+  const s = await typoScenario();
+  const idea = await s.concept("Friendslop Lost", ["cryptic clues", "social deduciton"]);
+  await components.createComponent(s.userId, {
+    axisId: s.axisId,
+    name: "social deduction",
+  });
+  const { from, into } = await s.pair();
+
+  const slot = await db.conceptComponent.findUniqueOrThrow({
+    where: { ideaId_componentId: { ideaId: idea.id, componentId: from.id } },
+  });
+
+  const result = await components.mergeComponent(s.userId, from.id, into.id);
+  assert.equal(result.movedOn, 1, "the blast radius is reported, not guessed");
+  assert.equal(result.deduped, 0);
+  assert.equal(result.name, "social deduction");
+  assert.equal(result.mergedName, "social deduciton");
+
+  assert.equal(await db.component.count({ where: { id: from.id } }), 0, "the typo is gone");
+  const moved = await db.conceptComponent.findUniqueOrThrow({
+    where: { ideaId_componentId: { ideaId: idea.id, componentId: into.id } },
+  });
+  assert.equal(moved.order, slot.order, "a correction must not shuffle the chip to the end");
+  assert.equal(
+    await db.conceptComponent.count({ where: { ideaId: idea.id } }),
+    2,
+    "and the concept's other component is untouched",
+  );
+});
+
+// ConceptComponent is @@id([ideaId, componentId]), so a blind updateMany from
+// one component to the other violates the primary key on any concept carrying
+// both. This is that concept.
+test("a concept carrying both ends up with one chip, not a constraint violation", async () => {
+  const s = await typoScenario();
+  const both = await s.concept("Carries Both", ["social deduction", "social deduciton"]);
+  const onlyTypo = await s.concept("Carries The Typo", ["social deduciton"]);
+  const { from, into } = await s.pair();
+
+  const result = await components.mergeComponent(s.userId, from.id, into.id);
+  assert.equal(result.movedOn, 1);
+  assert.equal(result.deduped, 1, "the duplicate is counted apart — nothing new lands there");
+
+  const rows = await db.conceptComponent.findMany({ where: { ideaId: both.id } });
+  assert.equal(rows.length, 1, "one chip, not two and not zero");
+  assert.equal(rows[0].componentId, into.id);
+
+  assert.deepEqual(
+    (await db.conceptComponent.findMany({ where: { ideaId: onlyTypo.id } })).map(
+      (r) => r.componentId,
+    ),
+    [into.id],
+    "and the concept that only had the typo picks up the survivor",
+  );
+});
+
+test("every concept touched by a merge declares the survivor's axis", async () => {
+  const s = await typoScenario();
+  const tone = await axes.createAxis(s.userId, { name: `Tone ${testId("a")}` });
+  const first = await s.concept("First", ["social deduciton"]);
+  const second = await s.concept("Second", ["social deduciton", "cryptic clues"]);
+  // Filed on a different axis on purpose: a same-axis merge would satisfy the
+  // invariant by accident.
+  await components.createComponent(s.userId, { axisId: tone.id, name: "social deduction" });
+  const { from, into } = await s.pair();
+
+  await components.mergeComponent(s.userId, from.id, into.id);
+
+  for (const id of [first.id, second.id]) {
+    assert.equal(
+      await db.conceptAxis.count({ where: { ideaId: id, axisId: tone.id } }),
+      1,
+      "a concept cannot carry a chip under an axis it never declared",
+    );
+  }
+});
+
+test("the merged-away component's axis is left declared and empty, not cleaned up", async () => {
+  const s = await typoScenario();
+  const tone = await axes.createAxis(s.userId, { name: `Tone ${testId("a")}` });
+  const idea = await s.concept("Only The Typo", ["social deduciton"]);
+  await components.createComponent(s.userId, { axisId: tone.id, name: "social deduction" });
+  const { from, into } = await s.pair();
+
+  await components.mergeComponent(s.userId, from.id, into.id);
+
+  // The user declared it. An empty axis is a statement about what they still
+  // intend to fill, which is exactly what deleteComponent leaves behind too.
+  assert.equal(
+    await db.conceptAxis.count({ where: { ideaId: idea.id, axisId: s.axisId } }),
+    1,
+    "the axis stays, so the slot becomes a declared gap rather than disappearing",
+  );
+  assert.equal(
+    await db.conceptComponent.count({
+      where: { ideaId: idea.id, component: { axisId: s.axisId } },
+    }),
+    0,
+    "and it really is empty",
+  );
+});
+
+test("merging a demoted concept's twin retargets it — it goes on living, as the survivor", async () => {
+  const s = await scenario();
+  const idea = await s.concept("Turned Out To Be A Component", ["a piece"]);
+  const demoted = await ladder.demoteConceptToComponent(s.userId, idea.id, s.axisId);
+  const into = await components.createComponent(s.userId, {
+    axisId: s.axisId,
+    name: "the name it should have had",
+  });
+
+  const result = await components.mergeComponent(s.userId, demoted.componentId, into.id);
+  assert.deepEqual(result.retargetedConcept, {
+    id: idea.id,
+    title: "Turned Out To Be A Component",
+  });
+  assert.equal(result.restoredConcept, null);
+
+  const row = await db.idea.findUniqueOrThrow({ where: { id: idea.id } });
+  assert.ok(row.demotedAt instanceof Date, "a merge is not a promotion — it stays demoted");
+  assert.equal(row.mirrorComponentId, into.id, "it is now living as the survivor");
+  assert.equal(
+    (await ideaQueries.getIdeasForUser(s.userId)).some((i) => i.id === idea.id),
+    false,
+    "so it is still out of the pool, not quietly resurrected",
+  );
+});
+
+test("merging onto a component that already has a twin returns the concept to the pool and says so", async () => {
+  const s = await scenario();
+  const idea = await s.concept("Turned Out To Be A Component", ["a piece"]);
+  const demoted = await ladder.demoteConceptToComponent(s.userId, idea.id, s.axisId);
+  const into = await components.createComponent(s.userId, {
+    axisId: s.axisId,
+    name: "already spoken for",
+  });
+  await ladder.promoteComponentToConcept(s.userId, into.id);
+
+  const result = await components.mergeComponent(s.userId, demoted.componentId, into.id);
+
+  // Idea.mirrorComponentId is @unique, so there is nowhere to point it. Falling
+  // back to the pool is what deleteComponent does, and for the same reason: no
+  // move on the ladder is allowed to destroy anything.
+  assert.equal(result.retargetedConcept, null);
+  assert.deepEqual(result.restoredConcept, {
+    id: idea.id,
+    title: "Turned Out To Be A Component",
+  });
+
+  const row = await db.idea.findUniqueOrThrow({ where: { id: idea.id } });
+  assert.equal(row.demotedAt, null, "the concept must come back rather than be stranded");
+  assert.equal(row.mirrorComponentId, null, "and it has no twin any more");
+  assert.equal(
+    (await ideaQueries.getIdeasForUser(s.userId)).some((i) => i.id === idea.id),
+    true,
+  );
+});
+
+test("the survivor keeps its own description and only adopts one into an empty field", async () => {
+  const s = await scenario();
+
+  const keeps = await components.createComponent(s.userId, {
+    axisId: s.axisId,
+    name: "keeps its own",
+    description: "the survivor's words",
+  });
+  const loses = await components.createComponent(s.userId, {
+    axisId: s.axisId,
+    name: "loses its own",
+    description: "the other one's words",
+  });
+  const overwritten = await components.mergeComponent(s.userId, loses.id, keeps.id);
+  assert.equal(overwritten.adoptedDescription, false);
+  assert.equal(
+    (await db.component.findUniqueOrThrow({ where: { id: keeps.id } })).description,
+    "the survivor's words",
+    "a merge must not rewrite the thing being merged into",
+  );
+
+  const empty = await components.createComponent(s.userId, {
+    axisId: s.axisId,
+    name: "has nothing to say",
+  });
+  const full = await components.createComponent(s.userId, {
+    axisId: s.axisId,
+    name: "has something to say",
+    description: "worth keeping",
+    contentJson: '{"body":1}',
+  });
+  const adopted = await components.mergeComponent(s.userId, full.id, empty.id);
+  assert.equal(adopted.adoptedDescription, true);
+  assert.equal(adopted.adoptedBody, true);
+
+  const survivor = await db.component.findUniqueOrThrow({ where: { id: empty.id } });
+  assert.equal(survivor.description, "worth keeping");
+  assert.equal(survivor.contentJson, '{"body":1}');
+});
+
+test("merging another user's component is a not-found, and merging one into itself is refused", async () => {
+  const mine = await scenario();
+  const theirs = await scenario();
+  const ours = await components.createComponent(mine.userId, {
+    axisId: mine.axisId,
+    name: "ours",
+  });
+  const notOurs = await components.createComponent(theirs.userId, {
+    axisId: theirs.axisId,
+    name: "not ours",
+  });
+
+  await assert.rejects(
+    () => components.mergeComponent(mine.userId, notOurs.id, ours.id),
+    /component not found/,
+  );
+  await assert.rejects(
+    () => components.mergeComponent(mine.userId, ours.id, notOurs.id),
+    /component not found/,
+  );
+  await assert.rejects(
+    () => components.mergeComponent(mine.userId, ours.id, ours.id),
+    /into itself/,
+  );
+
+  assert.equal(await db.component.count({ where: { id: ours.id } }), 1);
+  assert.equal(await db.component.count({ where: { id: notOurs.id } }), 1);
+});

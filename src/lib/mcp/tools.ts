@@ -1213,7 +1213,7 @@ const updateComponentTool: Tool = {
 const deleteComponentTool: Tool = {
   name: "delete_component",
   description:
-    "DESTRUCTIVE — remove a component from the vocabulary entirely. It comes off every concept using it; check usageCount from list_components first. To take a component off one concept only, use remove_component_from_concept instead. Each affected concept keeps the axis, so a filled slot becomes a declared gap rather than the axis vanishing. Returns detachedFrom (how many concepts lost it) and restoredConcept — a demoted concept that was living as this component is returned to the idea pool rather than being stranded.",
+    "DESTRUCTIVE — remove a component from the vocabulary entirely. It comes off every concept using it; check usageCount from list_components first. To take a component off one concept only, use remove_component_from_concept instead. If it is a near-duplicate of something you already have, merge_components is almost always the better answer: deleting throws away the overlap it was carrying. Each affected concept keeps the axis, so a filled slot becomes a declared gap rather than the axis vanishing. Returns detachedFrom (how many concepts lost it) and restoredConcept — a demoted concept that was living as this component is returned to the idea pool rather than being stranded.",
   inputSchema: {
     type: "object",
     properties: { id: { type: "string" } },
@@ -1223,6 +1223,35 @@ const deleteComponentTool: Tool = {
   handler: async (ctx, args) => {
     const rec = asRecord(args);
     return componentsLib.deleteComponent(ctx.userId, requireString(rec, "id"));
+  },
+};
+
+const mergeComponentsTool: Tool = {
+  name: "merge_components",
+  description:
+    "Fold one component into another, everywhere. fromId stops existing and every concept carrying it carries intoId instead, in the same slot; a concept that already had both ends up with one chip rather than a duplicate. This is the tool for the situation add_component_to_concept describes when it refuses a name for being too close to one that already exists and the two really are the same thing. Prefer it over delete_component for that case: deleting drops the overlap the near-duplicate was carrying, merging keeps it. The survivor keeps its own description and notes and only adopts the other's into a field it had left empty — a merge does not rewrite the thing being merged into. Every affected concept ends up declaring the survivor's axis; an axis left with no components is not cleaned up, because a declared empty axis is a statement about what the user still intends to fill. Returns movedOn and deduped, plus either retargetedConcept (a demoted concept that was living as the merged-away component and now lives as the survivor, still demoted) or restoredConcept (that concept returned to the idea pool instead, because the survivor already had a concept twin and a component can only have one).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      fromId: {
+        type: "string",
+        description: "The component that stops existing. Usually the near-duplicate or the typo.",
+      },
+      intoId: {
+        type: "string",
+        description: "The component that survives and absorbs it. The name everything will say afterwards.",
+      },
+    },
+    required: ["fromId", "intoId"],
+    additionalProperties: false,
+  },
+  handler: async (ctx, args) => {
+    const rec = asRecord(args);
+    return componentsLib.mergeComponent(
+      ctx.userId,
+      requireString(rec, "fromId"),
+      requireString(rec, "intoId"),
+    );
   },
 };
 
@@ -1502,6 +1531,7 @@ export const TOOLS: Tool[] = [
   createComponentTool,
   updateComponentTool,
   deleteComponentTool,
+  mergeComponentsTool,
   addComponentToConcept,
   removeComponentFromConcept,
   declareConceptAxis,

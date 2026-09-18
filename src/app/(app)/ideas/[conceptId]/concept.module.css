@@ -445,6 +445,50 @@
   border-radius: var(--radius);
 }
 
+/* ---- component merge ---------------------------------------------------- */
+
+/* Offered inside the delete confirm, and deliberately not styled as danger:
+   merging a typo into the thing it was meant to be keeps the overlap that
+   deleting would throw away, so it is usually the better of the two. */
+.mergeInstead {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: var(--radius);
+  transition: background var(--t-base) var(--ease);
+}
+
+.mergeInstead:hover,
+.mergeInstead:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.mergeTitle {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mergeGo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+}
+
 /* ---- component edit ----------------------------------------------------- */
 
 .editForm {

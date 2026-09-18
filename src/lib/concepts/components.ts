@@ -306,6 +306,182 @@ export async function deleteComponent(
   return { detachedFrom: existing._count.concepts, restoredConcept: stranded };
 }
 
+export type MergeComponentResult = {
+  /** The survivor. Everything that said the other name now says this one. */
+  componentId: string;
+  name: string;
+  /** The name that stopped existing, for copy that has to say what went. */
+  mergedName: string;
+  /** Concepts that were carrying the merged-away component and now carry this one. */
+  movedOn: number;
+  /**
+   * Concepts that already carried both, where the merge only dropped a
+   * duplicate chip. Counted apart from `movedOn` because nothing new appears on
+   * those boards — they just stop saying the same thing twice.
+   */
+  deduped: number;
+  /**
+   * A demoted concept that was living as the merged-away component and now
+   * lives as the survivor instead. It stays demoted: that is what a merge
+   * means, and the caller says so.
+   */
+  retargetedConcept: ConceptRef | null;
+  /**
+   * A demoted concept returned to the pool because the survivor already had a
+   * twin. Null in every other case. See the note below on why this is the
+   * fallback rather than the plan.
+   */
+  restoredConcept: ConceptRef | null;
+  /** The survivor's empty description took the merged-away one's. */
+  adoptedDescription: boolean;
+  /** Likewise for the body. */
+  adoptedBody: boolean;
+};
+
+/**
+ * Fold one component into another, everywhere.
+ *
+ * Delete is the wrong answer to the most common mistake in a vocabulary. A typo
+ * — "social deduciton" — should usually *become* "social deduction", not
+ * vanish: deleting it silently drops the overlap it was carrying, and overlap is
+ * the only thing decomposition is for. So this is the same blast radius as
+ * {@link deleteComponent} with the opposite outcome.
+ *
+ * Reattachment is not a blind `updateMany`. `ConceptComponent` is keyed
+ * `@@id([ideaId, componentId])`, so a concept already carrying both sides would
+ * make one row collide with the other; those rows are dropped instead and the
+ * survivor's chip — with its own position — is what remains. A concept carrying
+ * only the merged-away one keeps the exact `order` it had, so the chip does not
+ * jump to the end of the row for what is meant to be a correction.
+ *
+ * The survivor is the survivor: it keeps its own `description` and
+ * `contentJson`, and only adopts the other's into a field it had left empty. A
+ * merge must not quietly rewrite the thing being merged into.
+ *
+ * Every affected concept ends up declaring the survivor's axis. Concepts that
+ * declared the merged-away component's axis only because of it keep that axis
+ * declared, now empty — deliberately, and for the same reason as delete: the
+ * user declared it, and an empty axis is a statement about what they still
+ * intend to fill.
+ *
+ * The ladder case is the one that needs care. If the merged-away component was
+ * a demoted concept's twin, the concept is retargeted at the survivor and stays
+ * demoted — it goes on living, as the survivor. That is only possible while the
+ * survivor has no twin of its own: `Idea.mirrorComponentId` is `@unique`, so a
+ * survivor that already has one leaves nowhere to point. In that case the
+ * concept is returned to the pool instead, exactly as delete does, and the
+ * caller is told which of the two happened. Either way nothing is destroyed,
+ * which is the ladder's whole promise.
+ */
+export async function mergeComponent(
+  userId: string,
+  fromId: string,
+  intoId: string,
+): Promise<MergeComponentResult> {
+  if (fromId === intoId) {
+    throw new ValidationError("a component cannot be merged into itself");
+  }
+
+  const select = {
+    id: true,
+    name: true,
+    axisId: true,
+    description: true,
+    contentJson: true,
+    mirrorConcept: { select: { id: true, title: true, demotedAt: true } },
+  } as const;
+
+  const from = await db.component.findFirst({ where: { id: fromId, userId }, select });
+  if (!from) throw new NotFoundError("component not found");
+  const into = await db.component.findFirst({ where: { id: intoId, userId }, select });
+  if (!into) throw new NotFoundError("component not found");
+
+  // Owner-scoped on both sides: these reads decide what gets written below, so
+  // an unscoped one would be a write predicate in disguise.
+  const fromRows = await db.conceptComponent.findMany({
+    where: { componentId: from.id, idea: { userId } },
+    select: { ideaId: true, order: true },
+  });
+  const intoRows = await db.conceptComponent.findMany({
+    where: { componentId: into.id, idea: { userId } },
+    select: { ideaId: true },
+  });
+
+  const alreadyHasInto = new Set(intoRows.map((r) => r.ideaId));
+  const moved = fromRows.filter((r) => !alreadyHasInto.has(r.ideaId));
+  const deduped = fromRows.length - moved.length;
+
+  // Only a *demoted* twin is at risk. A live concept promoted from this
+  // component is left exactly where it is — `Idea.mirror` is `onDelete:
+  // SetNull`, which is the right answer there and the wrong one here.
+  const twin =
+    from.mirrorConcept && from.mirrorConcept.demotedAt !== null
+      ? { id: from.mirrorConcept.id, title: from.mirrorConcept.title }
+      : null;
+  const canRetarget = twin !== null && into.mirrorConcept === null;
+  const retargetedConcept = canRetarget ? twin : null;
+  const restoredConcept = twin !== null && !canRetarget ? twin : null;
+
+  const adoptedDescription = into.description === null && from.description !== null;
+  const adoptedBody = into.contentJson === null && from.contentJson !== null;
+
+  await db.$transaction(async (tx) => {
+    for (const row of moved) {
+      await tx.conceptComponent.create({
+        data: { ideaId: row.ideaId, componentId: into.id, order: row.order },
+      });
+    }
+
+    // Before the delete, so `SetNull` never gets to see a concept still
+    // pointing at the row on its way out.
+    if (retargetedConcept) {
+      await tx.idea.update({
+        where: { id: retargetedConcept.id },
+        data: { mirrorComponentId: into.id },
+      });
+    } else if (restoredConcept) {
+      await tx.idea.update({
+        where: { id: restoredConcept.id },
+        data: { demotedAt: null },
+      });
+    }
+
+    if (adoptedDescription || adoptedBody) {
+      await tx.component.update({
+        where: { id: into.id },
+        data: {
+          ...(adoptedDescription ? { description: from.description } : {}),
+          ...(adoptedBody ? { contentJson: from.contentJson } : {}),
+        },
+      });
+    }
+
+    // Cascades the merged-away component's remaining attachments, which by now
+    // are exactly the ones that would have collided.
+    await tx.component.delete({ where: { id: from.id } });
+
+    // The invariant, re-established for every concept touched — including the
+    // ones that already had the survivor, since a cross-axis merge can leave
+    // them carrying a chip under an axis they never declared.
+    for (const row of fromRows) {
+      await ensureConceptAxis(userId, row.ideaId, into.axisId, tx);
+    }
+  });
+
+  emitIdeas(userId);
+  return {
+    componentId: into.id,
+    name: into.name,
+    mergedName: from.name,
+    movedOn: moved.length,
+    deduped,
+    retargetedConcept,
+    restoredConcept,
+    adoptedDescription,
+    adoptedBody,
+  };
+}
+
 async function requireIdea(userId: string, ideaId: string): Promise<{ id: string }> {
   const idea = await db.idea.findFirst({ where: { id: ideaId, userId }, select: { id: true } });
   if (!idea) throw new NotFoundError("concept not found");
@@ -322,28 +498,32 @@ async function requireIdea(userId: string, ideaId: string): Promise<{ id: string
  * trusting callers to have checked: every call site does check today, but that
  * makes it safe by argument rather than by construction, and a future caller
  * passing a raw id would silently link one user's concept to another's axis.
+ *
+ * `client` exists so {@link mergeComponent} can re-establish the invariant
+ * inside its own transaction; on the default it is the ordinary client.
  */
 async function ensureConceptAxis(
   userId: string,
   ideaId: string,
   axisId: string,
+  client: Prisma.TransactionClient = db,
 ): Promise<void> {
-  const owned = await db.axis.findFirst({
+  const owned = await client.axis.findFirst({
     where: { id: axisId, userId },
     select: { id: true },
   });
   if (!owned) throw new NotFoundError("axis not found");
-  const existing = await db.conceptAxis.findUnique({
+  const existing = await client.conceptAxis.findUnique({
     where: { ideaId_axisId: { ideaId, axisId } },
     select: { ideaId: true },
   });
   if (existing) return;
-  const max = await db.conceptAxis.findFirst({
+  const max = await client.conceptAxis.findFirst({
     where: { ideaId, idea: { userId } },
     orderBy: { order: "desc" },
     select: { order: true },
   });
-  await db.conceptAxis.create({
+  await client.conceptAxis.create({
     data: { ideaId, axisId, order: (max?.order ?? -1) + 1 },
   });
 }

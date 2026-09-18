@@ -183,6 +183,42 @@ export async function deleteComponentAction(args: {
   }
 }
 
+/**
+ * Fold one component into another, everywhere.
+ *
+ * The counterpart to {@link deleteComponentAction}, and usually the right one:
+ * a near-duplicate typed by mistake was still carrying real overlap, and
+ * deleting it throws that away while merging keeps it. Offered at the moment
+ * the user has already decided a component was a mistake, which is the only
+ * moment they are looking for either.
+ *
+ * Same revalidation as delete, and for the same reason — the vocabulary list
+ * under /settings/axes is the only surface that can reach a component attached
+ * to nothing, and after a merge one of these two is exactly that.
+ */
+export async function mergeComponentAction(args: {
+  /** The component that stops existing. */
+  fromId: string;
+  /** The component that survives and absorbs it. */
+  intoId: string;
+  /** The concept whose board the merge was triggered from, if any. */
+  ideaId?: string;
+}): Promise<
+  | ({ ok: true } & components.MergeComponentResult)
+  | { ok: false; error: string }
+> {
+  const userId = await requireUserId();
+  try {
+    const result = await components.mergeComponent(userId, args.fromId, args.intoId);
+    if (args.ideaId) revalidateConcept(args.ideaId);
+    else revalidatePath("/ideas");
+    revalidatePath("/settings/axes");
+    return { ok: true, ...result };
+  } catch (err) {
+    return toError(err) ?? rethrow(err);
+  }
+}
+
 export async function addConceptAxisAction(args: {
   ideaId: string;
   axisId: string;

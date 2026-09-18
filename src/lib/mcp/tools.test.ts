@@ -76,7 +76,7 @@ async function newUser(): Promise<BearerContext> {
 test("every concept tool is registered and tool names are unique", () => {
   const names = tools.TOOLS.map((t) => t.name);
   assert.equal(new Set(names).size, names.length, "tool names must be unique");
-  assert.equal(names.length, 47);
+  assert.equal(names.length, 48);
 
   for (const expected of [
     "list_axes",
@@ -87,6 +87,7 @@ test("every concept tool is registered and tool names are unique", () => {
     "create_component",
     "update_component",
     "delete_component",
+    "merge_components",
     "add_component_to_concept",
     "remove_component_from_concept",
     "declare_concept_axis",
@@ -269,6 +270,138 @@ test("create_component is gated by the same near-duplicate check", async () => {
   });
   assert.match(String(message), /close to component/);
   assert.equal(await db.component.count({ where: { userId: ctx.userId } }), 1);
+});
+
+/* ---- merging away a near-duplicate --------------------------------------- */
+
+// The gate above can be insisted past, and sometimes it is insisted past
+// wrongly. merge_components is how that gets undone without throwing away the
+// overlap the two names were splitting between them.
+test("merge_components folds a near-duplicate back in and keeps the overlap it was splitting", async () => {
+  const ctx = await newUser();
+  const axis = await call<{ id: string }>(ctx, "create_axis", { name: "Mechanic" });
+  const first = await call<{ id: string }>(ctx, "create_idea", { title: "Friendslop" });
+  const second = await call<{ id: string }>(ctx, "create_idea", { title: "Keep Talking" });
+
+  const kept = await call<{ component: { id: string } }>(ctx, "add_component_to_concept", {
+    ideaId: first.id,
+    name: "hidden-role social deduction",
+    axisId: axis.id,
+    create: true,
+  });
+  const split = await call<{ component: { id: string } }>(ctx, "add_component_to_concept", {
+    ideaId: second.id,
+    name: "social deduction with a traitor",
+    axisId: axis.id,
+    create: true,
+    confirmDespiteSimilar: true,
+  });
+
+  // Two names, so the two concepts share nothing and the pair is invisible.
+  assert.deepEqual(
+    (await call<{ pairs: unknown[] }>(ctx, "find_overlapping_concepts")).pairs,
+    [],
+  );
+
+  const merged = await call<{
+    name: string;
+    mergedName: string;
+    movedOn: number;
+    deduped: number;
+    retargetedConcept: unknown;
+    restoredConcept: unknown;
+  }>(ctx, "merge_components", { fromId: split.component.id, intoId: kept.component.id });
+
+  assert.equal(merged.name, "hidden-role social deduction");
+  assert.equal(merged.mergedName, "social deduction with a traitor");
+  assert.equal(merged.movedOn, 1);
+  assert.equal(merged.deduped, 0);
+  assert.equal(merged.retargetedConcept, null);
+  assert.equal(merged.restoredConcept, null);
+
+  assert.equal(
+    await db.component.count({ where: { userId: ctx.userId } }),
+    1,
+    "one name where there were two",
+  );
+  for (const id of [first.id, second.id]) {
+    const view = await call<{ components: string[]; gapCount: number }>(ctx, "get_idea", { id });
+    assert.deepEqual(view.components, ["hidden-role social deduction"]);
+    assert.equal(view.gapCount, 0, "the slot is filled, not emptied — this is not a delete");
+  }
+});
+
+test("merge_components leaves a concept that had both with one chip", async () => {
+  const ctx = await newUser();
+  const axis = await call<{ id: string }>(ctx, "create_axis", { name: "Mechanic" });
+  const idea = await call<{ id: string }>(ctx, "create_idea", { title: "Carries Both" });
+
+  const kept = await call<{ component: { id: string } }>(ctx, "add_component_to_concept", {
+    ideaId: idea.id,
+    name: "tile matching",
+    axisId: axis.id,
+    create: true,
+  });
+  const dupe = await call<{ component: { id: string } }>(ctx, "add_component_to_concept", {
+    ideaId: idea.id,
+    name: "matching tiles",
+    axisId: axis.id,
+    create: true,
+    confirmDespiteSimilar: true,
+  });
+
+  const merged = await call<{ movedOn: number; deduped: number }>(ctx, "merge_components", {
+    fromId: dupe.component.id,
+    intoId: kept.component.id,
+  });
+  assert.equal(merged.movedOn, 0);
+  assert.equal(merged.deduped, 1);
+
+  const view = await call<{ components: string[] }>(ctx, "get_idea", { id: idea.id });
+  assert.deepEqual(view.components, ["tile matching"]);
+});
+
+test("merge_components refuses another user's vocabulary and refuses a component into itself", async () => {
+  const alice = await newUser();
+  const bob = await newUser();
+
+  const aliceAxis = await call<{ id: string }>(alice, "create_axis", { name: "Mechanic" });
+  const hers = await call<{ component: { id: string } }>(alice, "create_component", {
+    axisId: aliceAxis.id,
+    name: "tile matching",
+  });
+  const bobAxis = await call<{ id: string }>(bob, "create_axis", { name: "Mechanic" });
+  const his = await call<{ component: { id: string } }>(bob, "create_component", {
+    axisId: bobAxis.id,
+    name: "worker placement",
+  });
+
+  assert.ok(
+    await callError(bob, "merge_components", {
+      fromId: hers.component.id,
+      intoId: his.component.id,
+    }),
+    "merging another user's component away must fail",
+  );
+  assert.ok(
+    await callError(bob, "merge_components", {
+      fromId: his.component.id,
+      intoId: hers.component.id,
+    }),
+    "merging into another user's component must fail",
+  );
+  assert.match(
+    String(
+      await callError(bob, "merge_components", {
+        fromId: his.component.id,
+        intoId: his.component.id,
+      }),
+    ),
+    /into itself/,
+  );
+
+  assert.equal(await db.component.count({ where: { userId: alice.userId } }), 1);
+  assert.equal(await db.component.count({ where: { userId: bob.userId } }), 1);
 });
 
 /* ---- axes as declared gaps ----------------------------------------------- */

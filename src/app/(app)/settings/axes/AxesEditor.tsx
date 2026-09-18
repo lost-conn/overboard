@@ -9,14 +9,25 @@ import {
   reorderAxesAction,
   saveAxisAction,
 } from "@/lib/actions/axes";
-import { deleteComponentAction } from "@/lib/actions/concepts";
-import { MAX_AXIS_NAME_LEN, MAX_DESCRIPTION_LEN } from "@/lib/concepts/normalize";
+import { deleteComponentAction, mergeComponentAction } from "@/lib/actions/concepts";
+import {
+  MAX_AXIS_NAME_LEN,
+  MAX_DESCRIPTION_LEN,
+  rankByNameSimilarity,
+} from "@/lib/concepts/normalize";
 import styles from "./axes.module.css";
 
 // Suggestions, not a taxonomy. The whole design position is that the user's
 // vocabulary is discovered from their own concepts rather than shipped up
 // front, so these are one click each and nothing is created until they say so.
 const SUGGESTIONS = ["Mechanic", "Setting", "Tone", "Structure", "Material", "Premise"];
+
+/**
+ * Above this many affected concepts a confirm quotes the count instead of the
+ * names. Recognising a name is what stops a mistake, but a wall of them is not
+ * a list anybody reads. Matches the concept board's popover.
+ */
+const NAME_THE_CONCEPTS_UP_TO = 6;
 
 export function AxesEditor({
   axes,
@@ -28,6 +39,7 @@ export function AxesEditor({
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [prefillName, setPrefillName] = useState("");
+  const [mergingId, setMergingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -76,7 +88,7 @@ export function AxesEditor({
       names.length === 0
         ? "Nothing uses it — it is attached to no concept at all."
         : `${
-            names.length <= 6
+            names.length <= NAME_THE_CONCEPTS_UP_TO
               ? `It comes off ${names.length} concept${names.length === 1 ? "" : "s"}: ${names.join(", ")}.`
               : `It comes off ${names.length} concepts.`
           }\n\nThey keep the "${component.axisName}" axis, so the slot becomes an empty one to fill again.`;
@@ -101,6 +113,50 @@ export function AxesEditor({
           `"${result.restoredConcept.title}" was living as that component, so it has been put back in the idea pool rather than left stranded.`,
         );
       }
+      router.refresh();
+    });
+  };
+
+  // The same blast radius as delete, with the opposite outcome: those concepts
+  // end up carrying the survivor rather than an empty slot. Native confirm and
+  // alert, because that is what the rest of this page does.
+  const handleMergeComponent = (from: ComponentRow, into: ComponentRow) => {
+    const names = from.usedBy.map((c) => c.title);
+    const where =
+      names.length === 0
+        ? "Nothing uses it, so this only removes the name from your vocabulary."
+        : `${
+            names.length <= NAME_THE_CONCEPTS_UP_TO
+              ? `The ${names.length} concept${names.length === 1 ? "" : "s"} using it — ${names.join(", ")} —`
+              : `All ${names.length} concepts using it`
+          } will use "${into.name}" instead, in the same slot. Any that already had it end up with one chip, not two.`;
+
+    if (
+      !confirm(
+        `Merge the component "${from.name}" into "${into.name}"?\n\n${where}\n\n"${from.name}" stops existing. "${into.name}" keeps its own description and notes.`,
+      )
+    ) {
+      return;
+    }
+
+    setError(null);
+    startTransition(async () => {
+      const result = await mergeComponentAction({ fromId: from.id, intoId: into.id });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      if (result.retargetedConcept) {
+        alert(
+          `"${result.retargetedConcept.title}" was living as "${from.name}" and now lives as "${into.name}" instead.`,
+        );
+      } else if (result.restoredConcept) {
+        // Idea.mirrorComponentId is unique, so there was nowhere to point it.
+        alert(
+          `"${result.restoredConcept.title}" was living as "${from.name}", and "${into.name}" already has a concept of its own — so it has been put back in the idea pool rather than left stranded.`,
+        );
+      }
+      setMergingId(null);
       router.refresh();
     });
   };
@@ -190,8 +246,12 @@ export function AxesEditor({
                   <ComponentList
                     axisName={axis.name}
                     components={componentsByAxis.get(axis.id) ?? []}
+                    allComponents={components}
                     disabled={isPending}
+                    mergingId={mergingId}
                     onDelete={handleDeleteComponent}
+                    onStartMerge={setMergingId}
+                    onMerge={handleMergeComponent}
                   />
                 </div>
 
@@ -276,13 +336,22 @@ export function AxesEditor({
 function ComponentList({
   axisName,
   components,
+  allComponents,
   disabled,
+  mergingId,
   onDelete,
+  onStartMerge,
+  onMerge,
 }: {
   axisName: string;
   components: ComponentRow[];
+  /** The whole vocabulary — a merge target can live on any axis. */
+  allComponents: ComponentRow[];
   disabled: boolean;
+  mergingId: string | null;
   onDelete: (component: ComponentRow) => void;
+  onStartMerge: (id: string | null) => void;
+  onMerge: (from: ComponentRow, into: ComponentRow) => void;
 }) {
   if (components.length === 0) {
     return (
@@ -302,19 +371,110 @@ function ComponentList({
               ? "unused"
               : `used by ${c.usageCount} concept${c.usageCount === 1 ? "" : "s"}`}
           </span>
-          <button
-            type="button"
-            className={styles.componentDelete}
-            onClick={() => onDelete(c)}
-            disabled={disabled}
-            aria-label={`Delete the component ${c.name}`}
-            title="Delete from your vocabulary"
-          >
-            Delete
-          </button>
+          {mergingId === c.id ? (
+            <MergePicker
+              from={c}
+              allComponents={allComponents}
+              disabled={disabled}
+              onCancel={() => onStartMerge(null)}
+              onMerge={onMerge}
+            />
+          ) : (
+            <>
+              <button
+                type="button"
+                className={styles.componentMerge}
+                onClick={() => onStartMerge(c.id)}
+                disabled={disabled || allComponents.length < 2}
+                aria-label={`Merge the component ${c.name} into another`}
+                title="Fold this into another component, keeping its concepts"
+              >
+                Merge
+              </button>
+              <button
+                type="button"
+                className={styles.componentDelete}
+                onClick={() => onDelete(c)}
+                disabled={disabled}
+                aria-label={`Delete the component ${c.name}`}
+                title="Delete from your vocabulary"
+              >
+                Delete
+              </button>
+            </>
+          )}
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * Where a merge target gets chosen, inline in the row.
+ *
+ * A native select rather than a search box: this page is native confirms and
+ * alerts throughout, and a vocabulary small enough to read on one screen is
+ * small enough to pick from a list. The options are ordered by similarity to
+ * the name being merged away, because the target is nearly always the
+ * near-duplicate that caused the problem — "social deduciton" wants "social
+ * deduction" at the top, not whatever sorts first alphabetically.
+ */
+function MergePicker({
+  from,
+  allComponents,
+  disabled,
+  onCancel,
+  onMerge,
+}: {
+  from: ComponentRow;
+  allComponents: ComponentRow[];
+  disabled: boolean;
+  onCancel: () => void;
+  onMerge: (from: ComponentRow, into: ComponentRow) => void;
+}) {
+  const options = useMemo(() => {
+    const pool = allComponents.filter((c) => c.id !== from.id);
+    const ranked = rankByNameSimilarity(from.name, pool, (c) => c.name).map((r) => r.item);
+    const rest = pool
+      .filter((c) => !ranked.some((r) => r.id === c.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...ranked, ...rest];
+  }, [allComponents, from.id, from.name]);
+
+  const [targetId, setTargetId] = useState(options[0]?.id ?? "");
+  const target = options.find((c) => c.id === targetId) ?? null;
+
+  return (
+    <span className={styles.mergeRow}>
+      <label className={styles.mergeLabel} htmlFor={`merge-${from.id}`}>
+        into
+      </label>
+      <select
+        id={`merge-${from.id}`}
+        className={styles.mergeSelect}
+        value={targetId}
+        onChange={(e) => setTargetId(e.target.value)}
+        disabled={disabled}
+      >
+        {options.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+            {c.axisId === from.axisId ? "" : ` (${c.axisName})`}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className={styles.smallBtn}
+        onClick={() => target && onMerge(from, target)}
+        disabled={disabled || target === null}
+      >
+        Merge
+      </button>
+      <button type="button" className={styles.smallBtn} onClick={onCancel} disabled={disabled}>
+        Cancel
+      </button>
+    </span>
   );
 }
 

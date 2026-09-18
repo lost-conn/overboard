@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, Merge, Pencil, Plus, Trash2, X } from "lucide-react";
 import type {
   ConceptDecomposition,
   ConceptAxisRow,
@@ -23,6 +23,7 @@ import {
   createAndAttachComponentAction,
   deleteComponentAction,
   detachComponentAction,
+  mergeComponentAction,
   removeConceptAxisAction,
   updateComponentAction,
   type AttachOutcome,
@@ -437,6 +438,7 @@ function AxisRow({
               conceptTitle={conceptTitle}
               chip={c}
               axisColor={axis.color}
+              vocabulary={vocabulary}
               onNote={onNote}
             />
           ))
@@ -460,19 +462,21 @@ function ComponentChipItem({
   conceptTitle,
   chip,
   axisColor,
+  vocabulary,
   onNote,
 }: {
   conceptId: string;
   conceptTitle: string;
   chip: ComponentChip;
   axisColor: string;
+  vocabulary: VocabularyEntry[];
   onNote: (message: string) => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  // "view" | "edit" | "delete". Edit and delete are both multi-step and must
-  // survive the blur that clicking into them causes, hence the ref below.
-  const [mode, setMode] = useState<"view" | "edit" | "delete">("view");
+  // "view" | "edit" | "delete" | "merge". Everything but view is multi-step and
+  // must survive the blur that clicking into it causes, hence the ref below.
+  const [mode, setMode] = useState<"view" | "edit" | "delete" | "merge">("view");
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Read by the close timer, which would otherwise see whatever `mode` was when
   // the blur handler was created and shut the popover mid-confirm. Synced in an
@@ -570,6 +574,20 @@ function ComponentChipItem({
               conceptTitle={conceptTitle}
               chip={chip}
               onNote={onNote}
+              onMerge={() => setMode("merge")}
+              onCancel={() => setMode("view")}
+              onDone={() => {
+                setMode("view");
+                setOpen(false);
+              }}
+            />
+          ) : mode === "merge" ? (
+            <ComponentMergeConfirm
+              conceptId={conceptId}
+              conceptTitle={conceptTitle}
+              chip={chip}
+              vocabulary={vocabulary}
+              onNote={onNote}
               onCancel={() => setMode("view")}
               onDone={() => {
                 setMode("view");
@@ -647,11 +665,22 @@ function ComponentChipItem({
  */
 const NAME_THE_CONCEPTS_UP_TO = 6;
 
+/** How many merge targets the popover offers at once. It is not a browser. */
+const MERGE_TARGETS_SHOWN = 6;
+
+/**
+ * Floor for offering a component as a suggestion. Shared by the add combobox
+ * and the merge target picker: both are asking "did you mean this one?", and
+ * they should not disagree about what counts as close enough to say so.
+ */
+const MIN_SUGGEST_SCORE = 0.18;
+
 function ComponentDeleteConfirm({
   conceptId,
   conceptTitle,
   chip,
   onNote,
+  onMerge,
   onCancel,
   onDone,
 }: {
@@ -659,6 +688,7 @@ function ComponentDeleteConfirm({
   conceptTitle: string;
   chip: ComponentChip;
   onNote: (message: string) => void;
+  onMerge: () => void;
   onCancel: () => void;
   onDone: () => void;
 }) {
@@ -711,6 +741,20 @@ function ComponentDeleteConfirm({
         To take it off this concept only, use the &times; on the chip instead.
       </span>
 
+      {/* The other way out, offered at the moment the user has already decided
+          this component was a mistake — which is the only moment they are
+          looking for either. A typo should usually *become* the thing it was
+          meant to be: deleting it drops whatever overlap it was carrying, and
+          those concepts are left with a gap instead of the right chip. */}
+      <button
+        type="button"
+        className={styles.mergeInstead}
+        onClick={onMerge}
+        disabled={isPending}
+      >
+        <Merge size={12} aria-hidden /> Merge it into another component instead
+      </button>
+
       {error ? <span className={styles.editError}>{error}</span> : null}
 
       <span className={styles.editActions}>
@@ -722,6 +766,209 @@ function ComponentDeleteConfirm({
         >
           <Trash2 size={12} aria-hidden /> Delete
         </button>
+        <button type="button" className={styles.editCancel} onClick={onCancel} disabled={isPending}>
+          Cancel
+        </button>
+      </span>
+    </span>
+  );
+}
+
+/**
+ * Merge: pick what this component should have been, and become it.
+ *
+ * The target is very often the near-duplicate the user meant to type in the
+ * first place, so the list is ranked against this component's own name before
+ * a single keystroke — the answer should already be on screen.
+ *
+ * Like the delete confirm, this leads with the blast radius and names the
+ * concepts while the list is short enough to read. Unlike delete, the numbers
+ * are reassuring rather than alarming: those concepts end up with the right
+ * chip rather than an empty slot, which is the entire argument for being here.
+ */
+function ComponentMergeConfirm({
+  conceptId,
+  conceptTitle,
+  chip,
+  vocabulary,
+  onNote,
+  onCancel,
+  onDone,
+}: {
+  conceptId: string;
+  conceptTitle: string;
+  chip: ComponentChip;
+  vocabulary: VocabularyEntry[];
+  onNote: (message: string) => void;
+  onCancel: () => void;
+  onDone: () => void;
+}) {
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+  const [target, setTarget] = useState<VocabularyEntry | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  // This concept first — it is the one on screen, so it anchors the rest.
+  const affected = [conceptTitle, ...chip.alsoUsedBy.map((c) => c.title)];
+
+  const matches = useMemo(() => {
+    const pool = vocabulary.filter((v) => v.id !== chip.id);
+    const q = query.trim();
+    // An empty box ranks against this component's own name rather than showing
+    // nothing: the whole reason to be here is that something very like it
+    // already exists.
+    const ranked = rankByNameSimilarity(
+      q.length === 0 ? chip.name : q,
+      pool,
+      (v) => v.name,
+      MIN_SUGGEST_SCORE,
+    ).map((r) => r.item);
+    if (q.length === 0) return ranked.slice(0, MERGE_TARGETS_SHOWN);
+    const needle = q.toLowerCase();
+    const substring = pool.filter(
+      (v) => v.name.includes(needle) && !ranked.some((r) => r.id === v.id),
+    );
+    return [...ranked, ...substring].slice(0, MERGE_TARGETS_SHOWN);
+  }, [vocabulary, chip.id, chip.name, query]);
+
+  const merge = () => {
+    if (!target) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await mergeComponentAction({
+        ideaId: conceptId,
+        fromId: chip.id,
+        intoId: target.id,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      const head = `Merged "${chip.name}" into "${result.name}".`;
+      onNote(
+        result.retargetedConcept
+          ? `${head} "${result.retargetedConcept.title}" was living as "${chip.name}" and now lives as "${result.name}" instead.`
+          : result.restoredConcept
+            ? `${head} "${result.restoredConcept.title}" was living as "${chip.name}", and "${result.name}" already has a concept of its own — so it is back in the idea pool rather than stranded.`
+            : result.deduped > 0
+              ? `${head} ${result.movedOn} concept${result.movedOn === 1 ? "" : "s"} picked it up; ${result.deduped} already had both and now show one chip instead of two.`
+              : `${head} It is on ${result.movedOn} concept${result.movedOn === 1 ? "" : "s"} under the one name now.`,
+      );
+      onDone();
+      router.refresh();
+    });
+  };
+
+  if (target) {
+    return (
+      <span className={styles.deleteConfirm}>
+        <span className={styles.mergeTitle}>
+          Merge &ldquo;{chip.name}&rdquo; into &ldquo;{target.name}&rdquo;?
+        </span>
+
+        <span className={styles.deleteBody}>
+          {affected.length === 1 ? (
+            <>
+              Only this concept uses &ldquo;{chip.name}&rdquo;, so it ends up carrying
+              &ldquo;{target.name}&rdquo; in the same slot.
+            </>
+          ) : (
+            <>
+              All {affected.length} concepts using it
+              {affected.length <= NAME_THE_CONCEPTS_UP_TO ? (
+                <>
+                  {" "}
+                  &mdash; <span className={styles.deleteNames}>{affected.join(", ")}</span>
+                </>
+              ) : null}{" "}
+              end up carrying &ldquo;{target.name}&rdquo; in the same slot. Any that already
+              had it keep one chip, not two.
+            </>
+          )}
+        </span>
+
+        <span className={styles.deleteBody}>
+          &ldquo;{chip.name}&rdquo; stops existing. &ldquo;{target.name}&rdquo; keeps its own
+          description and notes.
+        </span>
+
+        {error ? <span className={styles.editError}>{error}</span> : null}
+
+        <span className={styles.editActions}>
+          <button
+            type="button"
+            className={styles.mergeGo}
+            onClick={merge}
+            disabled={isPending}
+          >
+            <Merge size={12} aria-hidden /> Merge
+          </button>
+          <button
+            type="button"
+            className={styles.editCancel}
+            onClick={() => setTarget(null)}
+            disabled={isPending}
+          >
+            Back
+          </button>
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span className={styles.deleteConfirm}>
+      <span className={styles.mergeTitle}>
+        What should &ldquo;{chip.name}&rdquo; become?
+      </span>
+      <span className={styles.deleteBody}>
+        Everything using it will use that one instead, keeping the overlap it was already
+        carrying.
+      </span>
+
+      <input
+        className={styles.editInput}
+        value={query}
+        maxLength={MAX_COMPONENT_NAME_LEN}
+        autoFocus
+        placeholder="Search your vocabulary..."
+        aria-label={`Merge ${chip.name} into which component?`}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+
+      {matches.length > 0 ? (
+        <span className={styles.comboGroup} role="group" aria-label="Merge targets">
+          {matches.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className={styles.comboOption}
+              onClick={() => setTarget(m)}
+              disabled={isPending}
+            >
+              <span className={styles.optName}>{m.name}</span>
+              {m.description ? <span className={styles.optDesc}>{m.description}</span> : null}
+              <span className={styles.optMeta}>
+                {m.axisId === chip.axisId ? null : (
+                  <span className={styles.optOffAxis}>{m.axisName}</span>
+                )}
+                used by {m.usageCount}
+              </span>
+            </button>
+          ))}
+        </span>
+      ) : (
+        <span className={styles.comboHint}>
+          {query.trim().length === 0
+            ? "Nothing in your vocabulary looks like this one. Type to search all of it."
+            : "No component matches that."}
+        </span>
+      )}
+
+      {error ? <span className={styles.editError}>{error}</span> : null}
+
+      <span className={styles.editActions}>
         <button type="button" className={styles.editCancel} onClick={onCancel} disabled={isPending}>
           Cancel
         </button>
@@ -803,8 +1050,6 @@ function ComponentEditForm({
 }
 
 /* ---- add component combobox --------------------------------------------- */
-
-const MIN_SUGGEST_SCORE = 0.18;
 
 function AddComponentCombobox({
   conceptId,

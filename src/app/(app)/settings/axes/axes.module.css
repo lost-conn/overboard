@@ -147,6 +147,42 @@
   cursor: default;
 }
 
+/* Same weight as Delete, not louder. The two sit together because they are
+   answers to the same question — and merge is usually the right one — but a
+   vocabulary list is for reading, not for being nagged at. */
+.componentMerge {
+  composes: componentDelete;
+}
+
+.componentMerge:hover:not(:disabled),
+.componentMerge:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.mergeRow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.mergeLabel {
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+}
+
+.mergeSelect {
+  max-width: 220px;
+  padding: var(--s-1) var(--s-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
 .moveGroup {
   display: inline-flex;
   gap: var(--s-1);
