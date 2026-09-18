@@ -35,6 +35,7 @@ import {
 } from "@/lib/concepts/pool";
 import { findOverlapPairs } from "@/lib/concepts/overlap";
 import { createIdeaAction, deleteIdeaAction, reorderIdeasAction } from "@/lib/actions/ideas";
+import { PromoteComponentButton, PromoteConceptButton } from "./Ladder";
 import { TagChip, TagChipOverflow } from "./TagChip";
 import {
   TagFilterBar,
@@ -500,6 +501,19 @@ function ConceptCard({
           </span>
         ) : null}
         {score > 0 ? <span className={styles.cardFootScore}>overlap {score}</span> : null}
+
+        {/* Promotion lives on the card, where the decision gets made. The
+            concept survives it, so a promoted card stays in the pool and says
+            where it went instead of offering to promote it a second time. */}
+        <span className={styles.cardPromote}>
+          <PromoteConceptButton
+            conceptId={concept.id}
+            title={concept.title}
+            project={concept.project}
+            breakDownHref={`/ideas/${concept.id}`}
+            size="sm"
+          />
+        </span>
       </div>
     </li>
   );
@@ -595,20 +609,30 @@ function VocabularyView({
               </div>
               <div className={styles.vocabItems}>
                 {group.items.map((v) => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    className={`${styles.vocabItem} ${
-                      selected.includes(v.id) ? styles.vocabItemOn : ""
-                    } ${focusedComponents.has(v.id) ? styles.vocabItemEcho : ""}`}
-                    style={{ ["--chip-color" as string]: group.color }}
-                    aria-pressed={selected.includes(v.id)}
-                    title={v.description ?? undefined}
-                    onClick={() => toggle(v.id)}
-                  >
-                    <span className={styles.vocabItemName}>{v.name}</span>
-                    <span className={styles.vocabItemCount}>{v.usageCount}</span>
-                  </button>
+                  // Vocabulary mode is where a component's accumulated weight
+                  // is visible, so it is where the up-rung belongs: the usage
+                  // count next to the name is the argument for taking it.
+                  <span className={styles.vocabItemWrap} key={v.id}>
+                    <button
+                      type="button"
+                      className={`${styles.vocabItem} ${
+                        selected.includes(v.id) ? styles.vocabItemOn : ""
+                      } ${focusedComponents.has(v.id) ? styles.vocabItemEcho : ""}`}
+                      style={{ ["--chip-color" as string]: group.color }}
+                      aria-pressed={selected.includes(v.id)}
+                      title={v.description ?? undefined}
+                      onClick={() => toggle(v.id)}
+                    >
+                      <span className={styles.vocabItemName}>{v.name}</span>
+                      <span className={styles.vocabItemCount}>{v.usageCount}</span>
+                    </button>
+                    <PromoteComponentButton
+                      componentId={v.id}
+                      name={v.name}
+                      className={styles.vocabPromote}
+                      compact
+                    />
+                  </span>
                 ))}
               </div>
             </div>

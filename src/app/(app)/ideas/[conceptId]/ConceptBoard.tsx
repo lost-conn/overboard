@@ -29,6 +29,12 @@ import {
 import { updateIdeaAction } from "@/lib/actions/ideas";
 import { setIdeaTagsAction } from "@/lib/actions/tags";
 import { CardEditor } from "../../../_components/Editor";
+import {
+  LadderPanel,
+  PromoteComponentButton,
+  type LadderAxis,
+  type LadderStatusView,
+} from "../../../_components/Ladder";
 import { TagInput } from "../../../_components/TagInput";
 import styles from "./concept.module.css";
 
@@ -43,6 +49,9 @@ type Props = {
   decomposition: ConceptDecomposition;
   vocabulary: VocabularyEntry[];
   partners: OverlapPartner[];
+  ladder: LadderStatusView;
+  /** Every axis the user owns — demoting files this concept under one. */
+  axes: LadderAxis[];
 };
 
 export function ConceptBoard({
@@ -54,6 +63,8 @@ export function ConceptBoard({
   decomposition,
   vocabulary,
   partners,
+  ladder,
+  axes,
 }: Props) {
   const [payoff, setPayoff] = useState<string | null>(null);
 
@@ -128,6 +139,8 @@ export function ConceptBoard({
           </p>
 
           <OverlapPanel partners={partners} />
+
+          <LadderPanel conceptId={conceptId} title={title} status={ladder} axes={axes} />
         </section>
 
         <section className={styles.notes} aria-label="Notes">
@@ -549,13 +562,24 @@ function ComponentChipItem({
                 )}
               </span>
 
-              <button
-                type="button"
-                className={styles.popEdit}
-                onClick={() => setEditing(true)}
-              >
-                <Pencil size={12} aria-hidden /> Edit everywhere
-              </button>
+              <span className={styles.popActions}>
+                <button
+                  type="button"
+                  className={styles.popEdit}
+                  onClick={() => setEditing(true)}
+                >
+                  <Pencil size={12} aria-hidden /> Edit everywhere
+                </button>
+
+                {/* The up-rung. A component that has accumulated weight can
+                    become a concept of its own — and stays a component, still
+                    attached everywhere it already was. */}
+                <PromoteComponentButton
+                  componentId={chip.id}
+                  name={chip.name}
+                  className={styles.popEdit}
+                />
+              </span>
             </>
           )}
         </span>

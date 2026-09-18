@@ -366,6 +366,14 @@
   text-decoration: underline;
 }
 
+/* Edit-everywhere and make-it-a-concept, stacked: both act on the component
+   rather than on this concept, so they read as one group. */
+.popActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
 .popEdit {
   display: inline-flex;
   align-items: center;

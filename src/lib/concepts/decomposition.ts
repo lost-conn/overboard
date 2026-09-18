@@ -182,6 +182,12 @@ export type PoolConcept = {
   componentIds: string[];
   componentCount: number;
   gapCount: number;
+  /**
+   * The project this concept became, if it has been promoted. Promotion no
+   * longer deletes the concept, so the pool has to be able to say which of its
+   * cards are already real work rather than offering to promote them twice.
+   */
+  project: { id: string; name: string } | null;
 };
 
 /**
@@ -192,7 +198,7 @@ export type PoolConcept = {
 export async function getPoolDecomposition(userId: string): Promise<PoolConcept[]> {
   const [ideas, declaredAxes, attachments] = await Promise.all([
     db.idea.findMany({
-      where: { userId },
+      where: { userId, demotedAt: null },
       orderBy: { order: "asc" },
       select: {
         id: true,
@@ -200,10 +206,11 @@ export async function getPoolDecomposition(userId: string): Promise<PoolConcept[
         order: true,
         createdAt: true,
         tags: { select: { tag: { select: { id: true, name: true, color: true } } } },
+        project: { select: { id: true, name: true } },
       },
     }),
     db.conceptAxis.findMany({
-      where: { idea: { userId }, axis: { userId } },
+      where: { idea: { userId, demotedAt: null }, axis: { userId } },
       orderBy: { order: "asc" },
       select: {
         ideaId: true,
@@ -211,7 +218,7 @@ export async function getPoolDecomposition(userId: string): Promise<PoolConcept[
       },
     }),
     db.conceptComponent.findMany({
-      where: { idea: { userId }, component: { userId } },
+      where: { idea: { userId, demotedAt: null }, component: { userId } },
       orderBy: { order: "asc" },
       select: {
         ideaId: true,
@@ -270,6 +277,7 @@ export async function getPoolDecomposition(userId: string): Promise<PoolConcept[
       componentIds,
       componentCount: componentIds.length,
       gapCount: axes.filter((a) => a.components.length === 0).length,
+      project: i.project,
     };
   });
 }
@@ -298,9 +306,12 @@ export async function getOverlapPartners(
   ideaId: string,
 ): Promise<OverlapPartner[]> {
   const [ideas, attachments] = await Promise.all([
-    db.idea.findMany({ where: { userId }, select: { id: true, title: true } }),
+    db.idea.findMany({
+      where: { userId, demotedAt: null },
+      select: { id: true, title: true },
+    }),
     db.conceptComponent.findMany({
-      where: { idea: { userId }, component: { userId } },
+      where: { idea: { userId, demotedAt: null }, component: { userId } },
       select: { ideaId: true, component: { select: { id: true, name: true } } },
     }),
   ]);

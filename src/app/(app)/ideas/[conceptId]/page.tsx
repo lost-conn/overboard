@@ -7,6 +7,7 @@ import {
   getOverlapPartners,
   getVocabulary,
 } from "@/lib/concepts/decomposition";
+import { getLadderStatus } from "@/lib/concepts/ladder";
 import { NotFoundError } from "@/lib/errors";
 import { ConceptBoard } from "./ConceptBoard";
 import styles from "./concept.module.css";
@@ -31,13 +32,22 @@ export default async function ConceptPage({
       getVocabulary(user.id),
       listTags(user.id),
       getOverlapPartners(user.id, conceptId),
+      getLadderStatus(user.id, conceptId),
     ]);
   } catch (err) {
     if (err instanceof NotFoundError) notFound();
     throw err;
   }
 
-  const [idea, decomposition, vocabulary, allTags, partners] = data;
+  const [idea, decomposition, vocabulary, allTags, partners, ladder] = data;
+
+  // Every axis the user owns, declared on this concept or not: demoting files
+  // the concept under one, and that choice isn't limited to the axes it happens
+  // to have declared for itself.
+  const axes = [
+    ...decomposition.axes.map((a) => ({ id: a.axisId, name: a.name, color: a.color })),
+    ...decomposition.undeclaredAxes.map((a) => ({ id: a.id, name: a.name, color: a.color })),
+  ];
 
   return (
     <main className={styles.page}>
@@ -50,6 +60,8 @@ export default async function ConceptPage({
         decomposition={decomposition}
         vocabulary={vocabulary}
         partners={partners}
+        ladder={ladder}
+        axes={axes}
       />
     </main>
   );

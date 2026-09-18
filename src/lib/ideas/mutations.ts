@@ -97,14 +97,48 @@ export async function reorderIdeas(userId: string, orderedIds: string[]): Promis
   emitIdeas(userId);
 }
 
-// Idea title becomes project name. If the idea has notes, they go on a single BACKLOG card.
-// Idea is deleted on success.
-export async function promoteIdea(userId: string, ideaId: string): Promise<{ projectId: string }> {
+/**
+ * Concept title becomes the project name. If it has notes, they go on a single
+ * BACKLOG card.
+ *
+ * The concept is **kept** and linked to the project it became. It used to be
+ * deleted here, which threw away the pool's memory at the exact moment an idea
+ * became real work — and under the component model it also pulled the
+ * concept's components out of circulation, when they should carry on feeding
+ * everything else.
+ *
+ * Promoting requires at least one component. This is the one moment where
+ * friction is genuinely earned: you are about to spend real time on this. The
+ * gate is soft — `allowWithoutComponents` lets the caller proceed once the
+ * reason has actually been shown, rather than a button being silently
+ * disabled with no explanation.
+ */
+export async function promoteIdea(
+  userId: string,
+  ideaId: string,
+  opts: { allowWithoutComponents?: boolean } = {},
+): Promise<{ projectId: string }> {
   const idea = await db.idea.findFirst({
-    where: { id: ideaId, userId },
-    select: { id: true, title: true, contentJson: true },
+    where: { id: ideaId, userId, demotedAt: null },
+    select: {
+      id: true,
+      title: true,
+      contentJson: true,
+      projectId: true,
+      _count: { select: { components: true } },
+    },
   });
   if (!idea) throw new NotFoundError("idea not found");
+
+  if (idea.projectId) {
+    throw new ValidationError("this concept has already been promoted to a project");
+  }
+
+  if (idea._count.components === 0 && !opts.allowWithoutComponents) {
+    throw new ValidationError(
+      "this concept has no components yet — break out at least one before promoting it",
+    );
+  }
 
   const result = await db.$transaction(async (tx) => {
     const project = await tx.project.create({
@@ -126,7 +160,12 @@ export async function promoteIdea(userId: string, ideaId: string): Promise<{ pro
       });
     }
 
-    await tx.idea.delete({ where: { id: idea.id } });
+    // The link, and the whole point of the change: the concept survives.
+    await tx.idea.update({
+      where: { id: idea.id },
+      data: { projectId: project.id },
+    });
+
     return { projectId: project.id };
   });
   emitIdeas(userId);

@@ -60,13 +60,6 @@ export async function reorderIdeasAction(orderedIds: string[]): Promise<void> {
   revalidatePath("/ideas");
 }
 
-export async function promoteIdeaAction(id: string): Promise<void> {
-  const userId = await requireUserId();
-  try {
-    await core.promoteIdea(userId, id);
-  } catch (err) {
-    swallowUserErrors(err);
-  }
-  revalidatePath("/");
-  revalidatePath("/ideas");
-}
+// Promotion lives in @/lib/actions/ladder now. It cannot swallow its errors the
+// way the actions above do: the promotion gate has to be able to say why it
+// stopped, which is the one thing a void-returning fire-and-forget action can't.

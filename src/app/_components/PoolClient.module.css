@@ -507,8 +507,13 @@
 }
 
 .cardFootScore {
-  margin-left: auto;
   color: var(--accent);
+}
+
+/* The one thing in the footer that is an action rather than a readout, so it
+   gets the right edge to itself. */
+.cardPromote {
+  margin-left: auto;
 }
 
 .dragGhost {
@@ -610,6 +615,37 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-1);
+}
+
+/* The chip plus its up-rung. The promote button keeps its space at all times
+   rather than appearing on hover — chips that reflow under the cursor are
+   miserable to aim at — and only gains contrast once you are on it. */
+.vocabItemWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.vocabPromote {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  opacity: 0.45;
+  transition: opacity var(--t-base) var(--ease), color var(--t-base) var(--ease),
+    border-color var(--t-base) var(--ease);
+}
+
+.vocabItemWrap:hover .vocabPromote,
+.vocabPromote:focus-visible {
+  opacity: 1;
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .vocabItem {
@@ -806,9 +842,17 @@
 
   .searchClear,
   .cardDelete,
-  .dragHandle {
+  .dragHandle,
+  .vocabPromote {
     min-width: 44px;
     min-height: 44px;
+  }
+
+  /* Nothing to hover it into view with. */
+  .vocabPromote {
+    width: 44px;
+    height: 44px;
+    opacity: 1;
   }
 
   .cardTitle,

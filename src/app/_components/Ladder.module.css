@@ -1,0 +1,341 @@
+/* The promotion ladder's controls. Shared by the pool grid and the concept
+   board, so nothing here assumes a container width. */
+
+/* ---- concept -> project -------------------------------------------------- */
+
+.promoteWrap {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  align-items: flex-start;
+}
+
+.promote {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  transition: background var(--t-base) var(--ease);
+}
+
+.promote:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.promote:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* On a pool card the promote button is one affordance among several and must
+   not shout over the concept's own title. */
+.promoteSm {
+  padding: var(--s-1) var(--s-2);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--accent);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.promoteSm:hover:not(:disabled) {
+  color: var(--surface);
+  background: var(--accent);
+}
+
+.onBoard {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--fs-label);
+  color: var(--success);
+}
+
+.onBoard:hover {
+  text-decoration: underline;
+}
+
+/* ---- the gate ------------------------------------------------------------ */
+
+/* Amber, not red: this is the same "unfinished, and here is what's missing"
+   signal the empty axis slots use, not an error. */
+.gate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  width: min(360px, 100%);
+  padding: var(--s-3);
+  background: color-mix(in srgb, var(--warning) 8%, var(--elev-2));
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  border-radius: var(--radius);
+}
+
+.gateFloating {
+  position: absolute;
+  top: calc(100% + var(--s-1));
+  right: 0;
+  z-index: 20;
+  width: min(320px, calc(100vw - var(--s-7)));
+  box-shadow: var(--shadow-card-hover);
+}
+
+.gateReason {
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.gateActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: center;
+}
+
+.gatePrimary {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--s-1) var(--s-2);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--surface);
+  background: var(--accent);
+  border-radius: var(--radius);
+}
+
+.gatePrimary:hover {
+  color: var(--surface);
+  background: var(--accent-hover);
+  text-decoration: none;
+}
+
+/* Available, but not dressed up as the sensible choice. */
+.gateAnyway {
+  padding: var(--s-1) var(--s-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: color var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.gateAnyway:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.gateCancel {
+  padding: var(--s-1) var(--s-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+}
+
+.gateCancel:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.error {
+  font-size: var(--fs-sm);
+  color: var(--danger);
+}
+
+/* ---- concept -> component ------------------------------------------------ */
+
+.demote {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: color var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.demote:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  align-items: flex-start;
+  width: 100%;
+  padding: var(--s-3);
+  background: var(--elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.pickerNote {
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.pickerOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.pickerOption {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color var(--t-base) var(--ease), background var(--t-base) var(--ease);
+}
+
+.pickerOption:hover:not(:disabled) {
+  background: var(--elev-3);
+  border-color: var(--text-dim);
+}
+
+.pickerDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+/* What the demote carried with it, said once, at the moment it happened. */
+.resultBody {
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.resultActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  align-items: center;
+}
+
+.resultLink {
+  font-size: var(--fs-sm);
+}
+
+.undo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color var(--t-base) var(--ease);
+}
+
+.undo:hover:not(:disabled) {
+  border-color: var(--text-dim);
+}
+
+/* ---- component -> concept ------------------------------------------------ */
+
+.componentPromote {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-2);
+  font: inherit;
+  font-size: var(--fs-label);
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: color var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+}
+
+.componentPromote:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---- the concept board's panel ------------------------------------------- */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  align-items: flex-start;
+  padding: var(--s-4);
+  background: var(--elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.panelTitle {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.panelNote {
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.panelRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  align-items: flex-start;
+  width: 100%;
+}
+
+.twin {
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+/* Coarse pointers: no hover, and every hit area reaches 44px. */
+@media (hover: none), (pointer: coarse) {
+  .promote,
+  .promoteSm,
+  .demote,
+  .undo,
+  .pickerOption,
+  .gatePrimary,
+  .gateAnyway,
+  .gateCancel,
+  .componentPromote,
+  .onBoard,
+  .resultLink {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}

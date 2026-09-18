@@ -741,16 +741,26 @@ const setIdeaTags: Tool = {
 
 const promoteIdea: Tool = {
   name: "promote_idea",
-  description: "Convert an idea into a new project. If the idea has a body, it becomes a single Backlog card. The idea is deleted on success.",
+  description:
+    "Convert an idea into a new project. If the idea has a body, it becomes a single Backlog card. The idea survives and is linked to the project it became. Requires at least one declared component unless allowWithoutComponents is set.",
   inputSchema: {
     type: "object",
-    properties: { id: { type: "string" } },
+    properties: {
+      id: { type: "string" },
+      allowWithoutComponents: {
+        type: "boolean",
+        description:
+          "Promote an idea that has no components yet. The gate is there to make you look at what the idea is made of first; set this only deliberately.",
+      },
+    },
     required: ["id"],
     additionalProperties: false,
   },
   handler: async (ctx, args) => {
     const rec = asRecord(args);
-    return ideasM.promoteIdea(ctx.userId, requireString(rec, "id"));
+    return ideasM.promoteIdea(ctx.userId, requireString(rec, "id"), {
+      allowWithoutComponents: optionalBool(rec, "allowWithoutComponents"),
+    });
   },
 };
 

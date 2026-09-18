@@ -5,5 +5,6 @@ export * from "./normalize";
 export * from "./axes";
 export * from "./components";
 export * from "./decomposition";
+export * from "./ladder";
 export * from "./overlap";
 export * from "./pool";
